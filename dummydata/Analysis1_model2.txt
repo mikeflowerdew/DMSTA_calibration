@@ -1,0 +1,3 @@
+# SR, truth yield, CLs+b
+SR1, 0.1, 0.78
+SR2, 2.0, 0.10
