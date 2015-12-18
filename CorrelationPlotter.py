@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import ROOT
+ROOT.gROOT.SetBatch(True)
 ROOT.gROOT.LoadMacro("AtlasStyle.C")
 ROOT.SetAtlasStyle()
 ROOT.gROOT.LoadMacro("AtlasUtils.C") 
