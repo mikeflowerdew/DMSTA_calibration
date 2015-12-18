@@ -8,9 +8,11 @@ class FourLepPaperReader:
     def __init__(self, suffix='.txt', directory='fourleppaperdata', analysisname='4L'):
         """Once the directory and the suffix are removed, the remaining filename indicates the SR.
         The input files should be semicolon-separated (like HepData), with columns like this:
-            param1; param2; --; cross-section [pb]; acceptance; --; --; CL obs; CL exp;
+            param1; param2; --; cross-section [pb]; acceptance; --; --; CL obs; CL exp; [filter efficiency];
         The first two columns will be appended to the model name to make each point unique.
         Columns with '--' are irrelevant and will be ignored.
+        The last column is optional, and allows the cross-section to be corrected
+        for the evgen filter efficiency if it was not already included.
         Lines beginning with a # are regarded as comments and ignored.
         A line before the data (usually the first) should be formatted like this:
             Model: SomeName
@@ -58,6 +60,9 @@ class FourLepPaperReader:
                     params = splitline[0:2]
                     Xsec = float(splitline[3])
                     Acc = float(splitline[4])
+                    # Optional correction for the evgen filter efficiency
+                    if len(splitline) > 9 and splitline[9] and not splitline[9].isspace():
+                        Xsec *= float(splitline[9])
 
                     # CL values are sometimes " < (some small value)"
                     # while others are equal to 1000000
@@ -81,6 +86,10 @@ class FourLepPaperReader:
                 # Hard-coded lumi, this isn't going to change now :)
                 truthyield = 20.3e3 * Xsec * Acc
 
+                if not CLobs and CLobs is not None:
+                    print 'WARNING: CLobs is zero in %s, model %s'%(fname,modelpoint)
+                if not CLexp and CLexp is not None:
+                    print 'WARNING: CLexp is zero in %s, model %s'%(fname,modelpoint)
                 # Finally, check that CLobs was read OK
                 # Not done earlier because eventually I might want to look at CLexp too
                 if CLobs is None: continue
