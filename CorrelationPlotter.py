@@ -64,7 +64,7 @@ class CorrelationPlotter:
 
             if modelset != set(results.keys()):
                 print 'WARNING: missing models for',analysisSR
-                print '\t','\n\t'.join(modelset - set(results.keys()))
+                print '\t','\n\t'.join(sorted(modelset - set(results.keys())))
 
     def MakeCorrelations(self):
         """Makes a TGraph object for each SR
@@ -177,6 +177,11 @@ def PassArguments():
         action = "store_true",
         dest = "dummyrandom",
         help = "Read random dummy input (for testing)")
+    parser.add_argument(
+        "--fourleppaper",
+        action = "store_true",
+        dest = "fourleppaper",
+        help = "Read input from 4L signature paper (for testing)")
 
     return parser.parse_args()
 
@@ -184,6 +189,8 @@ if __name__ == '__main__':
 
     cmdlinearguments = PassArguments()
 
+    plotdir = 'plots'
+    
     # Read the input files
     if cmdlinearguments.dummy:
 
@@ -191,14 +198,24 @@ if __name__ == '__main__':
 
         reader = DummyReader()
         data = reader.ReadFiles()
-
-    if cmdlinearguments.dummyrandom:
+        plotdir = 'dummyplots'
+        
+    elif cmdlinearguments.dummyrandom:
 
         from Reader_dummy import DummyRandomReader
 
         reader = DummyRandomReader()
         data = reader.ReadFiles()
+        plotdir = 'dummyplots'
 
+    elif cmdlinearguments.fourleppaper:
+
+        from Reader_FourLepPaper import FourLepPaperReader
+
+        reader = FourLepPaperReader()
+        data = reader.ReadFiles()
+        plotdir = 'fourleppaperplots'
+        
     else:
         
         print 'ERROR: The script only operates in dummy mode.'
@@ -208,7 +225,7 @@ if __name__ == '__main__':
 
     plotter = CorrelationPlotter(data)
     plotter.MakeCorrelations()
-    plotter.PlotData('dummyplots' if (cmdlinearguments.dummy or cmdlinearguments.dummyrandom) else 'plots')
-    plotter.SaveData('results.root')
+    plotter.PlotData(plotdir)
+    plotter.SaveData('/'.join([plotdir,'results.root']))
 
     
