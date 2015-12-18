@@ -130,7 +130,7 @@ class CorrelationPlotter:
             graph.GetXaxis().SetTitle('Yield')
             graph.GetYaxis().SetTitle('CL_{s+b}')
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
-            graph.GetXaxis().SetRangeUser(0,graph.GetXaxis().GetXmax())
+            graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
             graph.Draw('ap')
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
