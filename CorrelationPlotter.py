@@ -154,6 +154,17 @@ class CorrelationPlotter:
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
 
+    def FitData(self):
+        """Function for fitting the CL calibration data."""
+
+        # Things to be defined:
+        # * How to know what function to use (string in Fit? more complex function).
+        #   Maybe have an input from the Reader class?
+        # * How to perform the fit, including error-handling.
+        # * How to record the fit results. Best store the complete result, for flexibility.
+        
+        pass
+            
 def PassArguments():
 
     import argparse
