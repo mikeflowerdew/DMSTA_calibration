@@ -9,10 +9,7 @@ ROOT.gROOT.LoadMacro("AtlasUtils.C")
 class CorrelationPlotter:
 
     def __init__(self, data):
-        """Data should be a dictionary, with keys corresponding to "analysis_SR".
-        Values of this dictionary should also be dictionaries, with keys corresponding
-        to models (eg integers or strings) and values of (yield, CLs+b).
-        If either yield or CLs+b is not available, the entry should not be filled!
+        """Data should be a list of SignalRegion objects, with names corresponding to "analysis_SR".
         """
 
         # Cache the input data
@@ -36,64 +33,50 @@ class CorrelationPlotter:
         # First pupose: populate the complete model set
         # Second purpose: look for incomplete data ie missing yield and/or CLs+b
 
-        for analysisSR,results in self.__data.items():
+        for dataobj in self.__data:
 
-            # First check for incomplete data and remove it
-            # No protection if v has no len attribute, this should in principle never fail
-            incompletemodels = [k for k,v in results.items() if len(v) == 1]
-            if incompletemodels:
-                print 'WARNING: incomplete data for the following models in',analysisSR
-                print '\t',incompletemodels
-                for m in incompletemodels: results.pop(m)
+            dataobj.CheckData() # Checks and removes the duds
 
-            emptymodels = [k for k,v in results.items() if len(v) == 0]
-            if emptymodels:
-                print 'WARNING: empty data for the following models in',analysisSR
-                print '\t',emptymodels
-                for m in emptymodels: results.pop(m)
-
-            # Finally, add the models to the master list
-            modelset |= set(results.keys())
+            # Collect the model list after cleaning
+            modelset |= set(dataobj.data.keys())
 
         print 'Found %i models and %i SRs'%(len(modelset),len(self.__data))
-        print 'SR list:\t','\n\t\t'.join(self.__data.keys())
+        print 'SR list:\t','\n\t\t'.join([x.name for x in self.__data])
+        print
 
         # Second loop, to check if any analyses have missing models
         
-        for analysisSR,results in self.__data.items():
+        for dataobj in self.__data:
 
-            if modelset != set(results.keys()):
-                print 'WARNING: missing models for',analysisSR
-                print '\t','\n\t'.join(sorted(modelset - set(results.keys())))
+            if modelset != set(dataobj.data.keys()):
+                print 'WARNING in CorrelationPlotter: missing models for',dataobj.name
+                print '\t','\n\t'.join(sorted(modelset - set(dataobj.data.keys()))),'\n'
 
     def MakeCorrelations(self):
         """Makes a TGraph object for each SR
         where we have both a truth-level yield and a CLs value.
         """
         
+        self.CheckData()
+
         # Clear the correlation data
         self.__correlations = {}
 
-        for analysisSR,results in self.__data.items():
+        for dataobj in self.__data:
 
-            for model,info in results.iteritems():
+            for model,info in dataobj.data.iteritems():
 
-                if (not info) or len(info) < 2:
-                    print 'WARNING: incomplete info for %s, model %s'%(analysisSR,model)
-                
                 # Create the new TGraph
                 try:
-                    graph = self.__correlations[analysisSR]
+                    graph = self.__correlations[dataobj.name]
                 except KeyError:
                     graph = ROOT.TGraph()
-                    graph.SetName('Corr_%s'%(analysisSR))
-                    graph.SetTitle(analysisSR.replace('_',' '))
-                    self.__correlations[analysisSR] = graph
+                    graph.SetName('Corr_%s'%(dataobj.name))
+                    graph.SetTitle(dataobj.name.replace('_',' '))
+                    self.__correlations[dataobj.name] = graph
 
                 # Add the new point
-                graph.SetPoint(graph.GetN(), info[0], info[1])
-
-        self.CheckData()
+                graph.SetPoint(graph.GetN(), info['yield'], info[dataobj.InfoList()[-1]])
 
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
@@ -209,6 +192,8 @@ if __name__ == '__main__':
 
         reader = DummyReader()
         data = reader.ReadFiles()
+        # Example to corrupt part of the data
+        # data[0].data['model1']['CLsb'] = None
         plotdir = 'dummyplots'
         
     elif cmdlinearguments.dummyrandom:

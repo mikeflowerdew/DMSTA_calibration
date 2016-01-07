@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from glob import glob
+from DataObject import SignalRegion
 
 class DummyReader:
 
@@ -10,11 +11,11 @@ class DummyReader:
         self.__directory = directory
 
     def ReadFiles(self):
-        """Returns a dictionary, structured in the way required by the CorrelationPlotter.
+        """Returns a list of SignalRegion objects,as required by the CorrelationPlotter.
         """
 
         # This is what we want to return
-        result = {}
+        result = []
 
         infiles = glob(self.__directory+'/*'+self.__suffix)
         
@@ -35,18 +36,25 @@ class DummyReader:
                 splitline = line.split(',')
                 try:
                     analysisSR = '_'.join([analysisname,splitline[0]])
-                    datum = (float(splitline[1]),float(splitline[2]))
+                    SRyield = float(splitline[1])
+                    SRCLsb = float(splitline[2])
                 except:
                     print 'WARNING: Malformed line in %s: %s'%(fname,line)
                     # Carry on, hopefully we can just analyse the other results
                     continue
 
                 # Add in this data point
-                try:
-                    result[analysisSR][modelname] = datum
-                except KeyError:
+                # First, try to find the existing data item
+                obj = next((x for x in result if x.name == analysisSR), None)
+                if obj is None:
                     # First time we've looked at this analysisSR
-                    result[analysisSR] = {modelname: datum}
+                    obj = SignalRegion(analysisSR, ['CLsb'])
+                    result.append(obj)
+
+                # Next, create the empty data item
+                datum = obj.AddData(modelname)
+                datum['yield'] = SRyield
+                datum['CLsb'] = SRCLsb
 
         return result
     
