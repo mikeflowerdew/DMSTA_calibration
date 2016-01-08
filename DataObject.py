@@ -73,7 +73,7 @@ class SignalRegion:
 
             if not modellist: return # We're OK!
 
-            print 'WARNING: %s for the following models in %s'%(message,self.name)
+            print 'WARNING: %s for %i models in %s'%(message,len(modellist),self.name)
             print '\t',modellist,'\n'
             if removeduds:
                 for m in modellist: self.data.pop(m)

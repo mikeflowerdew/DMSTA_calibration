@@ -49,7 +49,7 @@ class CorrelationPlotter:
         for dataobj in self.__data:
 
             if modelset != set(dataobj.data.keys()):
-                print 'WARNING in CorrelationPlotter: missing models for',dataobj.name
+                print 'WARNING in CorrelationPlotter: missing %i models for %s'%(len(modelset) - len(dataobj.data.keys()),dataobj.name)
                 print '\t','\n\t'.join(sorted(modelset - set(dataobj.data.keys()))),'\n'
 
     def MakeCorrelations(self):
