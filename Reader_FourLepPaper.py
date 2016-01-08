@@ -1,12 +1,15 @@
 #!/usr/bin/env python
 
 from glob import glob
+from DataObject import SignalRegion
 
 class FourLepPaperReader:
     """Similar to the dummy reader, but reads HepData-like tables from the 4L search paper."""
     
     def __init__(self, suffix='.txt', directory='fourleppaperdata', analysisname='4L'):
-        """Once the directory and the suffix are removed, the remaining filename indicates the SR.
+        """
+        Set up to read input files from a named directory.
+        Once the directory and the suffix are removed, the remaining filename indicates the SR.
         The input files should be semicolon-separated (like HepData), with columns like this:
             param1; param2; --; cross-section [pb]; acceptance; --; --; CL obs; CL exp; [filter efficiency];
         The first two columns will be appended to the model name to make each point unique.
@@ -24,11 +27,11 @@ class FourLepPaperReader:
         self.__analysis = analysisname
         
     def ReadFiles(self):
-        """Returns a dictionary, structured in the way required by the CorrelationPlotter.
+        """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
         """
 
         # This is what we want to return
-        result = {}
+        result = []
 
         infiles = glob(self.__directory+'/*'+self.__suffix)
         
@@ -92,14 +95,19 @@ class FourLepPaperReader:
                     print 'WARNING: CLexp is zero in %s, model %s'%(fname,modelpoint)
                 # Finally, check that CLobs was read OK
                 # Not done earlier because eventually I might want to look at CLexp too
-                if CLobs is None: continue
-                
-                datum = (truthyield, CLobs)
+                if CLobs is None and CLexp is None: continue
+
                 # Add in this data point
-                try:
-                    result[analysisSR][modelpoint] = datum
-                except KeyError:
+                # First, try to find the existing data item
+                obj = next((x for x in result if x.name == analysisSR), None)
+                if obj is None:
                     # First time we've looked at this analysisSR
-                    result[analysisSR] = {modelpoint: datum}
+                    obj = SignalRegion(analysisSR, ['CLsObs','CLsExp'])
+                    result.append(obj)
+
+                datum = obj.AddData(modelpoint)
+                datum['yield'] = truthyield
+                datum['CLsObs']   = CLobs
+                datum['CLsExp']   = CLexp
 
         return result

@@ -1,18 +1,9 @@
 #!/usr/bin/env python
 
-import ROOT
-ROOT.gROOT.SetBatch(True)
-ROOT.gROOT.LoadMacro("AtlasStyle.C")
-ROOT.SetAtlasStyle()
-ROOT.gROOT.LoadMacro("AtlasUtils.C") 
-
 class CorrelationPlotter:
 
     def __init__(self, data):
-        """Data should be a dictionary, with keys corresponding to "analysis_SR".
-        Values of this dictionary should also be dictionaries, with keys corresponding
-        to models (eg integers or strings) and values of (yield, CLs+b).
-        If either yield or CLs+b is not available, the entry should not be filled!
+        """Data should be a list of SignalRegion objects, with names corresponding to "analysis_SR".
         """
 
         # Cache the input data
@@ -36,64 +27,65 @@ class CorrelationPlotter:
         # First pupose: populate the complete model set
         # Second purpose: look for incomplete data ie missing yield and/or CLs+b
 
-        for analysisSR,results in self.__data.items():
+        for dataobj in self.__data:
 
-            # First check for incomplete data and remove it
-            # No protection if v has no len attribute, this should in principle never fail
-            incompletemodels = [k for k,v in results.items() if len(v) == 1]
-            if incompletemodels:
-                print 'WARNING: incomplete data for the following models in',analysisSR
-                print '\t',incompletemodels
-                for m in incompletemodels: results.pop(m)
+            dataobj.CheckData() # Checks and removes the duds
 
-            emptymodels = [k for k,v in results.items() if len(v) == 0]
-            if emptymodels:
-                print 'WARNING: empty data for the following models in',analysisSR
-                print '\t',emptymodels
-                for m in emptymodels: results.pop(m)
-
-            # Finally, add the models to the master list
-            modelset |= set(results.keys())
+            # Collect the model list after cleaning
+            modelset |= set(dataobj.data.keys())
 
         print 'Found %i models and %i SRs'%(len(modelset),len(self.__data))
-        print 'SR list:\t','\n\t\t'.join(self.__data.keys())
+        print 'SR list:\t','\n\t\t'.join([x.name for x in self.__data])
+        print
 
         # Second loop, to check if any analyses have missing models
         
-        for analysisSR,results in self.__data.items():
+        for dataobj in self.__data:
 
-            if modelset != set(results.keys()):
-                print 'WARNING: missing models for',analysisSR
-                print '\t','\n\t'.join(sorted(modelset - set(results.keys())))
+            if modelset != set(dataobj.data.keys()):
+                print 'WARNING in CorrelationPlotter: missing %i models for %s'%(len(modelset) - len(dataobj.data.keys()),dataobj.name)
+                print '\t','\n\t'.join(sorted(modelset - set(dataobj.data.keys()))),'\n'
 
     def MakeCorrelations(self):
         """Makes a TGraph object for each SR
         where we have both a truth-level yield and a CLs value.
         """
         
+        self.CheckData()
+
         # Clear the correlation data
         self.__correlations = {}
 
-        for analysisSR,results in self.__data.items():
+        for dataobj in self.__data:
 
-            for model,info in results.iteritems():
+            # Additional loop over the different CL values
+            for CLtype in dataobj.InfoList():
 
-                if (not info) or len(info) < 2:
-                    print 'WARNING: incomplete info for %s, model %s'%(analysisSR,model)
-                
-                # Create the new TGraph
-                try:
-                    graph = self.__correlations[analysisSR]
-                except KeyError:
-                    graph = ROOT.TGraph()
-                    graph.SetName('Corr_%s'%(analysisSR))
-                    graph.SetTitle(analysisSR.replace('_',' '))
-                    self.__correlations[analysisSR] = graph
+                for model,info in dataobj.data.iteritems():
 
-                # Add the new point
-                graph.SetPoint(graph.GetN(), info[0], info[1])
+                    # Create the new TGraph
+                    graphkey = '_'.join([dataobj.name,CLtype])
+                    try:
+                        graph = self.__correlations[graphkey]
+                    except KeyError:
+                        graph = ROOT.TGraph()
+                        graph.SetName('Corr_%s'%(graphkey))
+                        graph.SetTitle(dataobj.name.replace('_',' '))
 
-        self.CheckData()
+                        # Little hack to set the y-axis title correctly
+                        # Using graph.GetYaxis().SetTitle(...) now is pointless,
+                        # because the underlying histogram axes have not yet been made.
+                        # So I'll augment the python object to store the information for later.
+                        try:
+                            graph.ytitle = dataobj.CLnames[CLtype]
+                        except KeyError:
+                            print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
+                            graph.ytitle = 'CL'
+                        self.__correlations[graphkey] = graph
+
+                    # Add the new point
+                    if info[CLtype] is not None:
+                        graph.SetPoint(graph.GetN(), info['yield'], info[CLtype])
 
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
@@ -123,12 +115,16 @@ class CorrelationPlotter:
         self.__canvas = ROOT.TCanvas('can','can',800,800)
 
         for analysisSR,graph in self.__correlations.items():
-            
+
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
             graph.Draw('ap')
             graph.GetXaxis().SetTitle('Yield')
-            graph.GetYaxis().SetTitle('CL_{s+b}')
+            try:
+                graph.GetYaxis().SetTitle(graph.ytitle) # Using the augmentation provided in self.MakeCorrelations()
+            except AttributeError:
+                # Should not happen, this is just in case
+                print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
             graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
             graph.Draw('ap')
@@ -154,6 +150,17 @@ class CorrelationPlotter:
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
 
+    def FitData(self):
+        """Function for fitting the CL calibration data."""
+
+        # Things to be defined:
+        # * How to know what function to use (string in Fit? more complex function).
+        #   Maybe have an input from the Reader class?
+        # * How to perform the fit, including error-handling.
+        # * How to record the fit results. Best store the complete result, for flexibility.
+        
+        pass
+            
 def PassArguments():
 
     import argparse
@@ -189,6 +196,12 @@ if __name__ == '__main__':
 
     cmdlinearguments = PassArguments()
 
+    import ROOT
+    ROOT.gROOT.SetBatch(True)
+    ROOT.gROOT.LoadMacro("AtlasStyle.C")
+    ROOT.SetAtlasStyle()
+    ROOT.gROOT.LoadMacro("AtlasUtils.C") 
+
     plotdir = 'plots'
     
     # Read the input files
@@ -198,6 +211,8 @@ if __name__ == '__main__':
 
         reader = DummyReader()
         data = reader.ReadFiles()
+        # Example to corrupt part of the data
+        # data[0].data['model1']['CLsb'] = None
         plotdir = 'dummyplots'
         
     elif cmdlinearguments.dummyrandom:

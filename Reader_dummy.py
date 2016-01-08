@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from glob import glob
+from DataObject import SignalRegion
 
 class DummyReader:
 
@@ -10,11 +11,11 @@ class DummyReader:
         self.__directory = directory
 
     def ReadFiles(self):
-        """Returns a dictionary, structured in the way required by the CorrelationPlotter.
+        """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
         """
 
         # This is what we want to return
-        result = {}
+        result = []
 
         infiles = glob(self.__directory+'/*'+self.__suffix)
         
@@ -35,18 +36,25 @@ class DummyReader:
                 splitline = line.split(',')
                 try:
                     analysisSR = '_'.join([analysisname,splitline[0]])
-                    datum = (float(splitline[1]),float(splitline[2]))
+                    SRyield = float(splitline[1])
+                    SRCLsb = float(splitline[2])
                 except:
                     print 'WARNING: Malformed line in %s: %s'%(fname,line)
                     # Carry on, hopefully we can just analyse the other results
                     continue
 
                 # Add in this data point
-                try:
-                    result[analysisSR][modelname] = datum
-                except KeyError:
+                # First, try to find the existing data item
+                obj = next((x for x in result if x.name == analysisSR), None)
+                if obj is None:
                     # First time we've looked at this analysisSR
-                    result[analysisSR] = {modelname: datum}
+                    obj = SignalRegion(analysisSR, ['CLsb'])
+                    result.append(obj)
+
+                # Next, create the empty data item
+                datum = obj.AddData(modelname)
+                datum['yield'] = SRyield
+                datum['CLsb'] = SRCLsb
 
         return result
     
@@ -65,15 +73,21 @@ class DummyRandomReader:
         self.__nSRs = nSRs
 
     def ReadFiles(self):
-        """Returns a dictionary, structured in the way required by the CorrelationPlotter.
+        """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
         """
 
         import ROOT
-        result = {}
+        result = []
 
-        # Quick alias to our random number generator
-        # Don't care about seeding etc, this is just for testing
+        # Functions for randomised truth yields and CL values.
+        # Don't care about seeding etc, this is just for proof-of-principle testing.
+
+        # Truth yield for a model: just a uniform distribution between 0 and some maximum value.
         yieldfunc = lambda cap: ROOT.gRandom.Uniform(cap)
+
+        # Extremely naive CL model: inversely proportional to the number of selected events.
+        # "scale" sets the absolute normalisation of the CL values (ie the SR sensitivity).
+        # The CL values are randomly smeared by 10%.
         CLfunc = lambda nevt,scale: (scale/nevt)*ROOT.gRandom.Gaus(1,0.1)
 
         # Set up some initial data
@@ -83,15 +97,23 @@ class DummyRandomReader:
 
                 analysisSR = 'Analysis%i_SR%i'%(analysis,iSR)
 
-                result[analysisSR] = {}
+                obj = SignalRegion(analysisSR, ['CLs','CLsb']) # Test out some new functionality, woo!
+                result.append(obj)
 
-                # Let's pick what parameters to use for this SR
+                # Let's pick what parameters to use for this SR.
+                # Cap the number of events somewhere near 15.
                 evtcap = ROOT.gRandom.Gaus(15,3)
+                # Assign a random sensitivity parameter (less sensitive SRs could have higher backgrounds etc).
                 effectiveness = ROOT.gRandom.Uniform(1,10)
 
                 for imodel in range(self.__nmodels):
 
+                    # Cache the number of events
                     nevt = yieldfunc(evtcap)
-                    result[analysisSR][imodel] = (nevt, CLfunc(nevt,effectiveness))
+
+                    datum = obj.AddData(imodel)
+                    datum['yield'] = nevt
+                    datum['CLsb']  = CLfunc(nevt,effectiveness)
+                    datum['CLs']   = CLfunc(nevt,effectiveness) # Lazy - in reality there would be some relationship between CLs and CLsb
 
         return result
