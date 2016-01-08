@@ -5,14 +5,31 @@ class SignalRegion:
     Class for holding CL values and fit functions for a single signal region.
     """
 
+    # Dictionary to help display CL names properly when plotting.
+    # Keys should be free of weird characters, as they could be used in file names etc.
+    # Values can use ROOT's TLatex format.
+    CLnames = {
+        'CL'     : 'CL',
+        'CLs'    : 'CL_{s}',
+        'CLb'    : 'CL_{b}',
+        'CLsb'   : 'CL_{s+b}',
+        'CLObs'  : 'Observed CL',
+        'CLsObs' : 'Observed CL_{s}',
+        'CLbObs' : 'Observed CL_{b}',
+        'CLsbObs': 'Observed CL_{s+b}',
+        'CLExp'  : 'Expected CL',
+        'CLsExp' : 'Expected CL_{s}',
+        'CLbExp' : 'Expected CL_{b}',
+        'CLsbExp': 'Expected CL_{s+b}',
+    }
+    
     def __init__(self, name, infolist=None):
         """Initialise the object with a name and (optionally) a list of which CL info will be provided.
         Name would usually encode the analysis and SR names.
         The infolist describes which CL-like quantities will be supplied.
-        If not specified, it will be assumed that CL_s, CL_b and CL_s+b will all be required.
-        These are encoded as "CLs", "CLb" and "CLsb", respectively (this will help the plotter to understand what to show).
-        In any case, the infolist items should not include unusual characters (_, {}, etc) as they may
-        be used in output file names etc.
+        The values of the list should match keys of SignalRegion.CLnames, see also the comment there.
+        If something really non-standard is needed, just modify the CLnames member of your instance.
+        By default, it is assumed that CLs, CLb and CLsb will be provided.
         Every data entry will have "yield" in addition to the infolist items.
         """
         

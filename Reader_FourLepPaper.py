@@ -95,18 +95,19 @@ class FourLepPaperReader:
                     print 'WARNING: CLexp is zero in %s, model %s'%(fname,modelpoint)
                 # Finally, check that CLobs was read OK
                 # Not done earlier because eventually I might want to look at CLexp too
-                if CLobs is None: continue
+                if CLobs is None and CLexp is None: continue
 
                 # Add in this data point
                 # First, try to find the existing data item
                 obj = next((x for x in result if x.name == analysisSR), None)
                 if obj is None:
                     # First time we've looked at this analysisSR
-                    obj = SignalRegion(analysisSR, ['CLs'])
+                    obj = SignalRegion(analysisSR, ['CLsObs','CLsExp'])
                     result.append(obj)
 
                 datum = obj.AddData(modelpoint)
                 datum['yield'] = truthyield
-                datum['CLs']   = CLobs
+                datum['CLsObs']   = CLobs
+                datum['CLsExp']   = CLexp
 
         return result

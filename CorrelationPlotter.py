@@ -71,10 +71,21 @@ class CorrelationPlotter:
                         graph = ROOT.TGraph()
                         graph.SetName('Corr_%s'%(graphkey))
                         graph.SetTitle(dataobj.name.replace('_',' '))
+
+                        # Little hack to set the y-axis title correctly
+                        # Using graph.GetYaxis().SetTitle(...) now is pointless,
+                        # because the underlying histogram axes have not yet been made.
+                        # So I'll augment the python object to store the information for later.
+                        try:
+                            graph.ytitle = dataobj.CLnames[CLtype]
+                        except KeyError:
+                            print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
+                            graph.ytitle = 'CL'
                         self.__correlations[graphkey] = graph
 
                     # Add the new point
-                    graph.SetPoint(graph.GetN(), info['yield'], info[CLtype])
+                    if info[CLtype] is not None:
+                        graph.SetPoint(graph.GetN(), info['yield'], info[CLtype])
 
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
@@ -105,18 +116,15 @@ class CorrelationPlotter:
 
         for analysisSR,graph in self.__correlations.items():
 
-            # Try to decode what the y-axis variable is
-            CLvalue = analysisSR.split('_')[-1]
-            if   CLvalue == 'CLsb': ytitle = 'CL_{s+b}'
-            elif CLvalue == 'CLs' : ytitle = 'CL_{s}'
-            elif CLvalue == 'CLb' : ytitle = 'CL_{b}'
-            else                  : ytitle = CLvalue
-
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
             graph.Draw('ap')
             graph.GetXaxis().SetTitle('Yield')
-            graph.GetYaxis().SetTitle(ytitle)
+            try:
+                graph.GetYaxis().SetTitle(graph.ytitle) # Using the augmentation provided in self.MakeCorrelations()
+            except AttributeError:
+                # Should not happen, this is just in case
+                print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
             graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
             graph.Draw('ap')
