@@ -7,7 +7,12 @@ class SignalRegion:
 
     def __init__(self, name, infolist=None):
         """Initialise the object with a name and (optionally) a list of which CL info will be provided.
+        Name would usually encode the analysis and SR names.
+        The infolist describes which CL-like quantities will be supplied.
         If not specified, it will be assumed that CL_s, CL_b and CL_s+b will all be required.
+        These are encoded as "CLs", "CLb" and "CLsb", respectively (this will help the plotter to understand what to show).
+        In any case, the infolist items should not include unusual characters (_, {}, etc) as they may
+        be used in output file names etc.
         Every data entry will have "yield" in addition to the infolist items.
         """
         

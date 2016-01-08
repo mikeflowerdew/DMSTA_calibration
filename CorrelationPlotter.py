@@ -64,19 +64,23 @@ class CorrelationPlotter:
 
         for dataobj in self.__data:
 
-            for model,info in dataobj.data.iteritems():
+            # Additional loop over the different CL values
+            for CLtype in dataobj.InfoList():
 
-                # Create the new TGraph
-                try:
-                    graph = self.__correlations[dataobj.name]
-                except KeyError:
-                    graph = ROOT.TGraph()
-                    graph.SetName('Corr_%s'%(dataobj.name))
-                    graph.SetTitle(dataobj.name.replace('_',' '))
-                    self.__correlations[dataobj.name] = graph
+                for model,info in dataobj.data.iteritems():
 
-                # Add the new point
-                graph.SetPoint(graph.GetN(), info['yield'], info[dataobj.InfoList()[-1]])
+                    # Create the new TGraph
+                    graphkey = '_'.join([dataobj.name,CLtype])
+                    try:
+                        graph = self.__correlations[graphkey]
+                    except KeyError:
+                        graph = ROOT.TGraph()
+                        graph.SetName('Corr_%s'%(graphkey))
+                        graph.SetTitle(dataobj.name.replace('_',' '))
+                        self.__correlations[graphkey] = graph
+
+                    # Add the new point
+                    graph.SetPoint(graph.GetN(), info['yield'], info[CLtype])
 
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
@@ -106,12 +110,19 @@ class CorrelationPlotter:
         self.__canvas = ROOT.TCanvas('can','can',800,800)
 
         for analysisSR,graph in self.__correlations.items():
-            
+
+            # Try to decode what the y-axis variable is
+            CLvalue = analysisSR.split('_')[-1]
+            if   CLvalue == 'CLsb': ytitle = 'CL_{s+b}'
+            elif CLvalue == 'CLs' : ytitle = 'CL_{s}'
+            elif CLvalue == 'CLb' : ytitle = 'CL_{b}'
+            else                  : ytitle = CLvalue
+
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
             graph.Draw('ap')
             graph.GetXaxis().SetTitle('Yield')
-            graph.GetYaxis().SetTitle('CL_{s+b}')
+            graph.GetYaxis().SetTitle(ytitle)
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
             graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
             graph.Draw('ap')
