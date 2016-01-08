@@ -1,11 +1,5 @@
 #!/usr/bin/env python
 
-import ROOT
-ROOT.gROOT.SetBatch(True)
-ROOT.gROOT.LoadMacro("AtlasStyle.C")
-ROOT.SetAtlasStyle()
-ROOT.gROOT.LoadMacro("AtlasUtils.C") 
-
 class CorrelationPlotter:
 
     def __init__(self, data):
@@ -193,6 +187,12 @@ def PassArguments():
 if __name__ == '__main__':
 
     cmdlinearguments = PassArguments()
+
+    import ROOT
+    ROOT.gROOT.SetBatch(True)
+    ROOT.gROOT.LoadMacro("AtlasStyle.C")
+    ROOT.SetAtlasStyle()
+    ROOT.gROOT.LoadMacro("AtlasUtils.C") 
 
     plotdir = 'plots'
     
