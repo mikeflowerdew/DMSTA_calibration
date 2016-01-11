@@ -156,7 +156,8 @@ class CorrelationPlotter:
             self.__canvas.SetLogy(0)
 
     def FitGraph(self, graph, fitfunc):
-        """Function for fitting the CL calibration data."""
+        """Function for fitting the CL calibration data.
+        If called before the graph is plotted and/or saved, the results are included in those steps."""
 
         # Things to be defined:
         # * How to know what function to use (string in Fit? more complex function).
@@ -167,10 +168,23 @@ class CorrelationPlotter:
         # If no fitting function is supplied, just bail
         if fitfunc is None: return
 
-        # FIXME: Assume a string for now
-        graph.Fit(fitfunc)
+        # Options to try: (see https://root.cern.ch/doc/master/classTGraph.html#aa978c8ee0162e661eae795f6f3a35589)
+        # Q: Quiet mode (if too many SRs)
+        # E: Better error estimate
+        # M: Improve fit results
+        # S: Returns full fit result
+        fitresult = graph.Fit(fitfunc, "S")
+
+        # A nonzero fit status indicates an error
+        if fitresult.Status():
+            print 'ERROR: Error code %i in fit for %s'%(fitresult.Status(),graph.GetName())
+            # What to do? Remove the function?
+
+        # Example extraction of results, see link above.
+        # chi2 = fitresult.Chi2()
+        # parameters = [fitresult.Value(i) for i in range(fitresult.NPar())]
         
-        pass
+        return fitresult # Dunno if I need this or not
             
 def PassArguments():
 
@@ -230,7 +244,7 @@ if __name__ == '__main__':
 
         from Reader_dummy import DummyRandomReader
 
-        reader = DummyRandomReader(nanalyses=1,nSRs=1)
+        reader = DummyRandomReader()
         data = reader.ReadFiles()
         plotdir = 'dummyplots'
 

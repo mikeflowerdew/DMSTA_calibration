@@ -98,8 +98,6 @@ class DummyRandomReader:
                 analysisSR = 'Analysis%i_SR%i'%(analysis,iSR)
 
                 obj = SignalRegion(analysisSR, ['CLs','CLsb']) # Test out some new functionality, woo!
-                obj.fitfunctions['CLs'] = '[0]/x[0]'
-                obj.fitfunctions['CLsb'] = '[0]/x[0]'
                 result.append(obj)
 
                 # Let's pick what parameters to use for this SR.
@@ -117,5 +115,15 @@ class DummyRandomReader:
                     datum['yield'] = nevt
                     datum['CLsb']  = CLfunc(nevt,effectiveness)
                     datum['CLs']   = CLfunc(nevt,effectiveness) # Lazy - in reality there would be some relationship between CLs and CLsb
+
+                # Fit functions. I know the correct form, so this is cheating
+                # Constructors take the x-axis range, while the parameter must be initialised to something.
+                # It apparently doesn't matter if the functions have unique names or not.
+
+                obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','[0]/x',0,evtcap)
+                obj.fitfunctions['CLs'].SetParameter(0,5.) # dumb but seems to work
+
+                obj.fitfunctions['CLsb'] = ROOT.TF1('fitfunc','[0]/x',0,evtcap)
+                obj.fitfunctions['CLs'].SetParameter(0,5.) # dumb but seems to work
 
         return result
