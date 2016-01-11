@@ -98,6 +98,8 @@ class DummyRandomReader:
                 analysisSR = 'Analysis%i_SR%i'%(analysis,iSR)
 
                 obj = SignalRegion(analysisSR, ['CLs','CLsb']) # Test out some new functionality, woo!
+                obj.fitfunctions['CLs'] = '[0]/x[0]'
+                obj.fitfunctions['CLsb'] = '[0]/x[0]'
                 result.append(obj)
 
                 # Let's pick what parameters to use for this SR.

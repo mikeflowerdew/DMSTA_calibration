@@ -61,31 +61,36 @@ class CorrelationPlotter:
             # Additional loop over the different CL values
             for CLtype in dataobj.InfoList():
 
-                for model,info in dataobj.data.iteritems():
-
-                    # Create the new TGraph
-                    graphkey = '_'.join([dataobj.name,CLtype])
+                # Create the new TGraph
+                graphkey = '_'.join([dataobj.name,CLtype])
+                try:
+                    graph = self.__correlations[graphkey]
+                except KeyError:
+                    graph = ROOT.TGraph()
+                    graph.SetName('Corr_%s'%(graphkey))
+                    graph.SetTitle(dataobj.name.replace('_',' '))
+                    
+                    # Little hack to set the y-axis title correctly
+                    # Using graph.GetYaxis().SetTitle(...) now is pointless,
+                    # because the underlying histogram axes have not yet been made.
+                    # So I'll augment the python object to store the information for later.
                     try:
-                        graph = self.__correlations[graphkey]
+                        graph.ytitle = dataobj.CLnames[CLtype]
                     except KeyError:
-                        graph = ROOT.TGraph()
-                        graph.SetName('Corr_%s'%(graphkey))
-                        graph.SetTitle(dataobj.name.replace('_',' '))
+                        print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
+                        graph.ytitle = 'CL'
+                    self.__correlations[graphkey] = graph
 
-                        # Little hack to set the y-axis title correctly
-                        # Using graph.GetYaxis().SetTitle(...) now is pointless,
-                        # because the underlying histogram axes have not yet been made.
-                        # So I'll augment the python object to store the information for later.
-                        try:
-                            graph.ytitle = dataobj.CLnames[CLtype]
-                        except KeyError:
-                            print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
-                            graph.ytitle = 'CL'
-                        self.__correlations[graphkey] = graph
+                # Fill the graph with data
+                for model,info in dataobj.data.iteritems():
 
                     # Add the new point
                     if info[CLtype] is not None:
                         graph.SetPoint(graph.GetN(), info['yield'], info[CLtype])
+
+                # Finally, attempt to fit the graph
+                if graph.GetN():
+                    self.FitGraph(graph, dataobj.fitfunctions[CLtype])
 
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
@@ -150,7 +155,7 @@ class CorrelationPlotter:
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
 
-    def FitData(self):
+    def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data."""
 
         # Things to be defined:
@@ -158,6 +163,12 @@ class CorrelationPlotter:
         #   Maybe have an input from the Reader class?
         # * How to perform the fit, including error-handling.
         # * How to record the fit results. Best store the complete result, for flexibility.
+
+        # If no fitting function is supplied, just bail
+        if fitfunc is None: return
+
+        # FIXME: Assume a string for now
+        graph.Fit(fitfunc)
         
         pass
             
@@ -219,7 +230,7 @@ if __name__ == '__main__':
 
         from Reader_dummy import DummyRandomReader
 
-        reader = DummyRandomReader()
+        reader = DummyRandomReader(nanalyses=1,nSRs=1)
         data = reader.ReadFiles()
         plotdir = 'dummyplots'
 
