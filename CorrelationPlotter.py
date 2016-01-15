@@ -258,10 +258,12 @@ if __name__ == '__main__':
         
     else:
         
-        print 'ERROR: The script only operates in dummy mode.'
-        exit(1)
+        # Default operation: do the real anaylsis
+        from Reader_DMSTA import DMSTAReader
 
-        pass
+        reader = DMSTAReader()
+        data = reader.ReadFiles()
+        plotdir = 'plots'
 
     plotter = CorrelationPlotter(data)
     plotter.MakeCorrelations()
