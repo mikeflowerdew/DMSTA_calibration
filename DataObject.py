@@ -31,6 +31,9 @@ class SignalRegion:
         If something really non-standard is needed, just modify the CLnames member of your instance.
         By default, it is assumed that CLs, CLb and CLsb will be provided.
         Every data entry will have "yield" in addition to the infolist items.
+        The object also defines a "fitfunctions" dictionary, with the same keys as infolist.
+        These can be populated with strings and/or TF1 objects in the reader class,
+        to decide how the functions are to be fitted.
         """
         
         self.name = name
