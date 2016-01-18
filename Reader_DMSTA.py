@@ -3,6 +3,7 @@
 from glob import glob
 from DataObject import SignalRegion
 import ROOT
+ROOT.gROOT.SetBatch(True)
 
 class DMSTAReader:
     """Similar to the dummy reader, but reads truth yields from an ntuple and CL values from text files."""
@@ -18,8 +19,8 @@ class DMSTAReader:
         }
     
     # Gah, way too many arguments - could fix with slots if I have time
-    def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_all.root',
-                 dirprefix='Data_', fileprefix='pMSSM_SRA_table_EWK_', filesuffix='.dat',
+    def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_skim.root',
+                 dirprefix='Data_', fileprefix='pMSSM_STA_table_EWK_', filesuffix='.dat',
                  DSlist='Data_Yields/D3PDs.txt'):
         """
         Set up to read input files from several directories.
@@ -55,8 +56,14 @@ class DMSTAReader:
         for analysis in self.analysisdict.keys():
             result = self.ReadCLValues(result, analysis)
 
+        # Keep warning/info messages from different sources separate
+        print
+            
         # Then add the yields
         result = self.ReadYields(result)
+
+        # Keep warning/info messages from different sources separate
+        print
 
         return result
 
@@ -79,6 +86,7 @@ class DMSTAReader:
             splitline = line.split('.')
 
             try:
+                # In both cases I need a string, but want to check that it's a valid int
                 DSID = int(splitline[1])
                 modelID = int(splitline[2].split('_')[5])
             except IndexError:
@@ -108,16 +116,13 @@ class DMSTAReader:
         for analysis in self.analysisdict.values():
             tree.SetBranchStatus('*%s*'%(analysis), 1)
 
-        print 'WARNING: Looping over %s entries'%(tree.GetEntries())
+        print 'INFO: Reader_DMSTA looping over %s entries'%(tree.GetEntries())
+        filledYields = 0
         
         for entry in tree:
 
-            modelID = entry.modelName
+            modelID = int(entry.modelName)
 
-            # I believe the models are in order
-            if not modelID % 1000:
-                print 'On model',modelID
-            
             try:
                 DSID = DSIDdict[modelID]
             except KeyError:
@@ -134,11 +139,16 @@ class DMSTAReader:
                 truthyield = getattr(entry, '_'.join(['EW_ExpectedEvents',datum.branchname]))
 
                 try:
-                    datum.data['yield'] = truthyield
+                    datum.data[DSID]['yield'] = truthyield
+                    filledYields += 1
                 except KeyError:
                     # FIXME: Should check if the model is in DSIDdict and the yield is high and print a warning if it's not in data
                     pass
-        
+
+        print 'Filled %i entries with yields'%(filledYields)
+        from pprint import pprint
+        for thing in data:
+            pprint(thing.data)
         return data
     
     def ReadCLValues(self, data, analysis):
@@ -146,11 +156,13 @@ class DMSTAReader:
         """
 
         # Find the input files
-        firstbit = self.__dirprefix+analysis+'/'+self.__fileprefix+analysis
-        infiles = glob(firstbit+'_*'+self.__filesuffix)
-        
+        firstbit = self.__dirprefix+analysis+'/'+self.__fileprefix+analysis+'_'
+        searchstring = firstbit+'*'+self.__filesuffix
+        infiles = glob(searchstring)
+
+        print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
         for fname in infiles:
-            
+
             SRname = fname.replace(firstbit,'').replace(self.__filesuffix,'')
 
             analysisSR = '_'.join([analysis,SRname])
@@ -159,13 +171,13 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['CLs','CLsb'])
+                obj = SignalRegion(analysisSR, ['CLb','CLsb'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
-                obj.branchname = '_'.join([self.analysisdict[SRname],self.NtupleSRname(SRname,analysis)])
+                obj.branchname = '_'.join([self.analysisdict[analysis],self.NtupleSRname(SRname,analysis)])
             else:
-                print 'ERROR in Reader_DMSTA: already read-in model %s for %s'%(modelpoint,analysisSR)
+                print 'WARNING in Reader_DMSTA: already read-in file for %s'%(analysisSR)
                 continue
 
             f = open(fname)
@@ -191,15 +203,19 @@ class DMSTAReader:
                     continue
 
                 # Check that either CLsb or CLb were read OK
-                if CLs is None and CLsb is None: continue
+                if CLb is None and CLsb is None: continue
 
                 if not CLb and CLb is not None:
                     print 'WARNING: CLb is zero in %s, model %s'%(fname,modelpoint)
                 if not CLsb and CLsb is not None:
                     print 'WARNING: CLsb is zero in %s, model %s'%(fname,modelpoint)
 
-                datum = obj.data[modelpoint] # Is it possible for this to fail?
-                datum['CLs']   = CLs
+                try:
+                    datum = obj.data[modelpoint]
+                    print 'WARNING: Entry for model %i already exists for %s'%(modelpoint,analysisSR)
+                except KeyError:
+                    datum = obj.AddData(modelpoint)
+                datum['CLb']   = CLb
                 datum['CLsb']   = CLsb
 
         return data
@@ -208,8 +224,14 @@ class DMSTAReader:
         """Convert the SR name used in the CL files to that used in the yield ntuple.
         """
 
-        # Fix for 3L SR0a
-        SRname = SRname.replace('BIN','_')
+        if analysis == '3L':
+            # Fix for 3L SR0a
+            SRname = SRname.replace('BIN0','_')
+            SRname = SRname.replace('BIN','_')
+    
+            # Fix for a couple of other 3L SRs
+            SRname = SRname.replace('SR0tb','SR0b')
+            SRname = SRname.replace('SR1t','SR1SS')
 
         return SRname
     

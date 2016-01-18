@@ -81,7 +81,11 @@ class SignalRegion:
         
         for modelID,datum in self.data.iteritems():
 
-            hasYield = datum['yield'] is not None
+            try:
+                hasYield = datum['yield'] is not None
+            except TypeError:
+                print 'Urgh:',modelID,datum
+                raise
             numCLs = len([prop for prop in self.__infolist if datum[prop] is not None])
 
             if hasYield:
@@ -96,14 +100,19 @@ class SignalRegion:
         
         def __PrintWarning(modellist, message, removeduds=True):
 
-            if not modellist: return # We're OK!
+            if not modellist:
+                print 'INFO: Checked %s for %s. OK'%(self.name,message)
+                return # We're OK!
 
-            print 'WARNING: %s for %i models in %s'%(message,len(modellist),self.name)
+            print 'WARNING: %s for %i/%s models in %s'%(message,len(modellist),len(self.data),self.name)
             print '\t',modellist,'\n'
             if removeduds:
                 for m in modellist: self.data.pop(m)
 
+        from pprint import pprint
+        pprint(self.data)
         __PrintWarning(emptymodels, 'empty data')
         __PrintWarning(yieldlessmodels, 'empty yields')
         __PrintWarning(CLlessmodels, 'empty CL data')
         __PrintWarning(incompletemodels, 'incomplete CL data', False)
+

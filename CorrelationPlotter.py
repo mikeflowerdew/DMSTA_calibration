@@ -34,6 +34,7 @@ class CorrelationPlotter:
             # Collect the model list after cleaning
             modelset |= set(dataobj.data.keys())
 
+        print
         print 'Found %i models and %i SRs'%(len(modelset),len(self.__data))
         print 'SR list:\t','\n\t\t'.join([x.name for x in self.__data])
         print
@@ -44,7 +45,7 @@ class CorrelationPlotter:
 
             if modelset != set(dataobj.data.keys()):
                 print 'WARNING in CorrelationPlotter: missing %i models for %s'%(len(modelset) - len(dataobj.data.keys()),dataobj.name)
-                print '\t','\n\t'.join(sorted(modelset - set(dataobj.data.keys()))),'\n'
+                print '\t','\n\t'.join(map(str, sorted(modelset - set(dataobj.data.keys())))),'\n'
 
     def MakeCorrelations(self):
         """Makes a TGraph object for each SR
