@@ -109,8 +109,6 @@ class SignalRegion:
             if removeduds:
                 for m in modellist: self.data.pop(m)
 
-        from pprint import pprint
-        pprint(self.data)
         __PrintWarning(emptymodels, 'empty data')
         __PrintWarning(yieldlessmodels, 'empty yields')
         __PrintWarning(CLlessmodels, 'empty CL data')

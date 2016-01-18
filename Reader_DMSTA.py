@@ -146,9 +146,6 @@ class DMSTAReader:
                     pass
 
         print 'Filled %i entries with yields'%(filledYields)
-        from pprint import pprint
-        for thing in data:
-            pprint(thing.data)
         return data
     
     def ReadCLValues(self, data, analysis):
