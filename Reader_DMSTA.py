@@ -168,7 +168,7 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['CLb','CLsb'])
+                obj = SignalRegion(analysisSR, ['CLb','CLsb','CLs'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
@@ -214,6 +214,8 @@ class DMSTAReader:
                     datum = obj.AddData(modelpoint)
                 datum['CLb']   = CLb
                 datum['CLsb']   = CLsb
+                if CLb and CLsb:
+                    datum['CLs'] = CLsb/CLb
 
         return data
 
