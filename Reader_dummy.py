@@ -124,6 +124,6 @@ class DummyRandomReader:
                 obj.fitfunctions['CLs'].SetParameter(0,5.) # dumb but seems to work
 
                 obj.fitfunctions['CLsb'] = ROOT.TF1('fitfunc','[0]/x',0,evtcap)
-                obj.fitfunctions['CLs'].SetParameter(0,5.) # dumb but seems to work
+                obj.fitfunctions['CLsb'].SetParameter(0,5.) # dumb but seems to work
 
         return result

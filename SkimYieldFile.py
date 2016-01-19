@@ -10,14 +10,30 @@ intree = infile.Get('susy')
 
 intree.SetBranchStatus('*', 0)
 intree.SetBranchStatus('modelName', 1)
+
+# Turn analysis branches on
 intree.SetBranchStatus('*EwkFourLepton*', 1)
 intree.SetBranchStatus('*EwkThreeLepton*', 1)
 intree.SetBranchStatus('*EwkTwoLepton*', 1)
 intree.SetBranchStatus('*EwkTwoTau*', 1)
 
-outfile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_skim.root', 'RECREATE')
-outtree = intree.CloneTree(0)
-# outtree.CopyEntries(intree) # This copies every event
+# Add some associated info about the models
+intree.SetBranchStatus('BF_chi_*', 1)
+intree.SetBranchStatus('Cross_section_nn*', 1)
+intree.SetBranchStatus('cos_tau', 1)
+intree.SetBranchStatus('m_chi_*', 1)
+intree.SetBranchStatus('mu', 1)
+intree.SetBranchStatus('tanb', 1)
+
+# Turn some specific categories of branches off again
+intree.SetBranchStatus('EWTruthAcc_*', 0)
+
+outfile_sim = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_sim.root', 'RECREATE')
+outtree_sim = intree.CloneTree(0)
+# outtree_sim.CopyEntries(intree) # This copies every event
+
+outfile_nosim = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_nosim.root', 'RECREATE')
+outtree_nosim = intree.CloneTree(0)
 
 # First-level optimisation: write output only for simulated samples
 f = open('Data_Yields/D3PDs.txt')
@@ -42,18 +58,32 @@ for line in f:
 
     modellist.append(modelID)
 
+print 'Looping over',intree.GetEntries(),'entries'
 nwritten = 0
 for entry in intree:
-    if entry.modelName in modellist:
-        outtree.Fill()
+    
+    modelName = entry.modelName
+    if modelName % 1000 == 0:
+        print 'On model %6i, written %3i so far'%(modelName,nwritten)
+        
+    if modelName in modellist:
+        outtree_sim.Fill()
         nwritten += 1
+    else:
+        outtree_nosim.Fill()
+
+    # if nwritten == 5: break # Just for testing
 
 print 'Looped over',intree.GetEntries(),'entries'
 print 'Selected',nwritten,'entries'
 
-# The open command puts us in the correct directory
-outtree.Write()
-outfile.Close()
+outfile_sim.cd()
+outtree_sim.Write()
+outfile_sim.Close()
+
+outfile_nosim.cd()
+outtree_nosim.Write()
+outfile_nosim.Close()
 
 infile.Close()
 

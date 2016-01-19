@@ -19,7 +19,7 @@ class DMSTAReader:
         }
     
     # Gah, way too many arguments - could fix with slots if I have time
-    def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_skim.root',
+    def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_sim.root',
                  dirprefix='Data_', fileprefix='pMSSM_STA_table_EWK_', filesuffix='.dat',
                  DSlist='Data_Yields/D3PDs.txt'):
         """
