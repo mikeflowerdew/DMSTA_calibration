@@ -67,7 +67,7 @@ class CorrelationPlotter:
                 try:
                     graph = self.__correlations[graphkey]
                 except KeyError:
-                    graph = ROOT.TGraph()
+                    graph = ROOT.TGraphErrors()
                     graph.SetName('Corr_%s'%(graphkey))
                     graph.SetTitle(dataobj.name.replace('_',' '))
                     
@@ -87,7 +87,15 @@ class CorrelationPlotter:
 
                     # Add the new point
                     if info[CLtype] is not None:
-                        graph.SetPoint(graph.GetN(), info['yield'], info[CLtype])
+                        pointNumber = graph.GetN()
+                        graph.SetPoint(pointNumber, info['yield'], info[CLtype])
+
+                        # Check to see if we have an error on the yield
+                        try:
+                            graph.SetPointError(pointNumber, info['yield'].error, 0)
+                        except AttributeError:
+                            # Absolutely OK, we just don't have errors
+                            pass
 
                 # Finally, attempt to fit the graph
                 if graph.GetN():

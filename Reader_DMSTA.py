@@ -2,6 +2,7 @@
 
 from glob import glob
 from DataObject import SignalRegion
+from ValueWithError import valueWithError
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
@@ -137,9 +138,10 @@ class DMSTAReader:
                 analysisSR = analysisSR.replace('BIN','_')
 
                 truthyield = getattr(entry, '_'.join(['EW_ExpectedEvents',datum.branchname]))
+                trutherror = getattr(entry, '_'.join(['EW_ExpectedError',datum.branchname]))
 
                 try:
-                    datum.data[DSID]['yield'] = truthyield
+                    datum.data[DSID]['yield'] = valueWithError(truthyield,trutherror)
                     filledYields += 1
                 except KeyError:
                     # FIXME: Should check if the model is in DSIDdict and the yield is high and print a warning if it's not in data
@@ -168,7 +170,7 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['CLb','CLsb','CLs'])
+                obj = SignalRegion(analysisSR, ['CLs'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
@@ -212,8 +214,7 @@ class DMSTAReader:
                     print 'WARNING: Entry for model %i already exists for %s'%(modelpoint,analysisSR)
                 except KeyError:
                     datum = obj.AddData(modelpoint)
-                datum['CLb']   = CLb
-                datum['CLsb']   = CLsb
+
                 if CLb and CLsb:
                     datum['CLs'] = CLsb/CLb
 
