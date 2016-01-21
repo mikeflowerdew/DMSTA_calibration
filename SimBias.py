@@ -2,6 +2,22 @@
 
 """A simple script to check for possible bias in the selection of simulated models."""
 
+from ValueWithError import valueWithError
+
+# A bit dumb, but I need a helper function
+def pullInOverflow(hist):
+    """Pull the overflow into the final histogram bin."""
+
+    nbins = hist.GetNbinsX()
+
+    lastbin  = valueWithError(hist.GetBinContent(nbins  ),hist.GetBinError(nbins ))
+    lastbin += valueWithError(hist.GetBinContent(nbins+1),hist.GetBinError(nbins+1))
+
+    hist.SetBinContent(nbins,lastbin.value)
+    hist.SetBinError(nbins,lastbin.error)
+
+    return
+    
 # Import & set up ATLAS style
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -51,13 +67,16 @@ for branchname in branchlist:
     simhist = ROOT.gDirectory.Get('hsim'+branchname)
 
     # Pull overflow into the histogram for selected plots
-    # FIXME: Should update error too => write a function for this
-    if branchname.startswith('Cross_section') or branchname.startswith('EW_Expected') or branchname.startswith('EW_r_'):
-        nbins = simhist.GetNbinsX()
-        simhist.SetBinContent(nbins,simhist.GetBinContent(nbins)+simhist.GetBinContent(nbins+1))
-        nosimhist.SetBinContent(nbins,nosimhist.GetBinContent(nbins)+nosimhist.GetBinContent(nbins+1))
+    pullInOverflow(simhist)
+    pullInOverflow(nosimhist)
+#     # FIXME: Should update error too => write a function for this
+#     if branchname.startswith('Cross_section') or branchname.startswith('EW_Expected') or branchname.startswith('EW_r_'):
+#         nbins = simhist.GetNbinsX()
+#         pullInOverflow(simhist)
+#         pullInOverflow(nosimhist)
+#         simhist.SetBinContent(nbins,simhist.GetBinContent(nbins)+simhist.GetBinContent(nbins+1))
+#         nosimhist.SetBinContent(nbins,nosimhist.GetBinContent(nbins)+nosimhist.GetBinContent(nbins+1))
 
-    print branchname,nosimhist
     if not nosimhist.Integral(): continue
 
     # Set up style and normalisation
@@ -73,7 +92,7 @@ for branchname in branchlist:
         nosimhist.SetMaximum(1.1*simhist.GetMaximum())
 
     # Draw!
-    nosimhist.Draw()
+    nosimhist.Draw('hist')
     simhist.Draw('esame')
 
     # Add a title so I know what the plot is, and save!
