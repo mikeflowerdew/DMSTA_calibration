@@ -71,15 +71,15 @@ class CorrelationPlotter:
                     graph.SetName('Corr_%s'%(graphkey))
                     graph.SetTitle(dataobj.name.replace('_',' '))
                     
-                    # Little hack to set the y-axis title correctly
-                    # Using graph.GetYaxis().SetTitle(...) now is pointless,
+                    # Little hack to set the x-axis title correctly
+                    # Using graph.GetXaxis().SetTitle(...) now is pointless,
                     # because the underlying histogram axes have not yet been made.
                     # So I'll augment the python object to store the information for later.
                     try:
-                        graph.ytitle = dataobj.CLnames[CLtype]
+                        graph.xtitle = dataobj.CLnames[CLtype]
                     except KeyError:
                         print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
-                        graph.ytitle = 'CL'
+                        graph.xtitle = 'CL'
                     self.__correlations[graphkey] = graph
 
                 # Fill the graph with data
@@ -88,11 +88,11 @@ class CorrelationPlotter:
                     # Add the new point
                     if info[CLtype] is not None:
                         pointNumber = graph.GetN()
-                        graph.SetPoint(pointNumber, info['yield'], info[CLtype])
+                        graph.SetPoint(pointNumber, info[CLtype], info['yield'])
 
                         # Check to see if we have an error on the yield
                         try:
-                            graph.SetPointError(pointNumber, info['yield'].error, 0)
+                            graph.SetPointError(pointNumber, 0, info['yield'].error)
                         except AttributeError:
                             # Absolutely OK, we just don't have errors
                             pass
@@ -133,9 +133,9 @@ class CorrelationPlotter:
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
             graph.Draw('ap')
-            graph.GetXaxis().SetTitle('Yield')
+            graph.GetYaxis().SetTitle('Yield')
             try:
-                graph.GetYaxis().SetTitle(graph.ytitle) # Using the augmentation provided in self.MakeCorrelations()
+                graph.GetXaxis().SetTitle(graph.xtitle) # Using the augmentation provided in self.MakeCorrelations()
             except AttributeError:
                 # Should not happen, this is just in case
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
@@ -182,6 +182,8 @@ class CorrelationPlotter:
         # E: Better error estimate
         # M: Improve fit results
         # S: Returns full fit result
+        print
+        print 'INFO: Fitting',graph.GetName()
         fitresult = graph.Fit(fitfunc, "S")
 
         # A nonzero fit status indicates an error
