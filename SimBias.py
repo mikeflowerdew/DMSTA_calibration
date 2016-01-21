@@ -66,16 +66,9 @@ for branchname in branchlist:
     simtree.Draw(branchname+'>>hsim'+branchname+binstr)
     simhist = ROOT.gDirectory.Get('hsim'+branchname)
 
-    # Pull overflow into the histogram for selected plots
+    # Pull overflow into the histogram
     pullInOverflow(simhist)
     pullInOverflow(nosimhist)
-#     # FIXME: Should update error too => write a function for this
-#     if branchname.startswith('Cross_section') or branchname.startswith('EW_Expected') or branchname.startswith('EW_r_'):
-#         nbins = simhist.GetNbinsX()
-#         pullInOverflow(simhist)
-#         pullInOverflow(nosimhist)
-#         simhist.SetBinContent(nbins,simhist.GetBinContent(nbins)+simhist.GetBinContent(nbins+1))
-#         nosimhist.SetBinContent(nbins,nosimhist.GetBinContent(nbins)+nosimhist.GetBinContent(nbins+1))
 
     if not nosimhist.Integral(): continue
 
