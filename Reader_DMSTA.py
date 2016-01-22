@@ -179,7 +179,7 @@ class DMSTAReader:
                 print 'WARNING in Reader_DMSTA: already read-in file for %s'%(analysisSR)
                 continue
 
-            obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','x++1++TMath::Log(x)')
+            obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
             obj.fitfunctions['CLs'].SetParameter(0,-0.1)
             obj.fitfunctions['CLs'].SetParameter(1,1.)
 
