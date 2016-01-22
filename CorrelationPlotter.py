@@ -13,6 +13,9 @@ class CorrelationPlotter:
         # the data subdictionaries, but with TGraph elements
         self.__correlations = None
 
+        # Fit result cache, for monitoring
+        self.__fitresults = None # Dict of name:TFitResultPtr
+
         # For plotting
         self.__canvas = None
 
@@ -56,6 +59,7 @@ class CorrelationPlotter:
 
         # Clear the correlation data
         self.__correlations = {}
+        self.__fitresults = {}
 
         for dataobj in self.__data:
 
@@ -99,8 +103,12 @@ class CorrelationPlotter:
 
                 # Finally, attempt to fit the graph
                 if graph.GetN():
-                    self.FitGraph(graph, dataobj.fitfunctions[CLtype])
-
+                    # Give a warning if this was already fitted (shouldn't happen?)
+                    if self.__fitresults.has_key(graphkey):
+                        print 'WARNING: Graph %s has already been fitted'%(graphkey)
+                    # Overwrite previous fit result, if any
+                    self.__fitresults[graphkey] = self.FitGraph(graph, dataobj.fitfunctions[CLtype])
+                    
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
 
@@ -163,6 +171,38 @@ class CorrelationPlotter:
             # Reset to linear scale
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
+
+        # Now plot some summary fit results
+        chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
+                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        probplot = ROOT.TH1D('probplot',';;Fit probability',
+                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        
+        for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
+
+            chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+
+            if self.__fitresults[analysisSR].Ndf():
+                chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
+            probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
+
+        # Make sure the labels can be read, and adjust the canvas margin to fit
+        chi2plot.GetXaxis().LabelsOption('v')
+        probplot.GetXaxis().LabelsOption('v')
+        oldmargin = self.__canvas.GetBottomMargin()
+        self.__canvas.SetBottomMargin(0.4)
+
+        chi2plot.SetMinimum(0)
+        chi2plot.Draw()
+        self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
+
+        probplot.SetMinimum(0)
+        probplot.Draw()
+        self.__canvas.Print('/'.join([outdir,'prob.pdf']))
+
+        # Reset the canvas
+        self.__canvas.SetBottomMargin(oldmargin)
 
     def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data.
