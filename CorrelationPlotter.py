@@ -13,6 +13,9 @@ class CorrelationPlotter:
         # the data subdictionaries, but with TGraph elements
         self.__correlations = None
 
+        # Fit result cache, for monitoring
+        self.__fitresults = None # Dict of name:TFitResultPtr
+
         # For plotting
         self.__canvas = None
 
@@ -56,6 +59,7 @@ class CorrelationPlotter:
 
         # Clear the correlation data
         self.__correlations = {}
+        self.__fitresults = {}
 
         for dataobj in self.__data:
 
@@ -71,15 +75,15 @@ class CorrelationPlotter:
                     graph.SetName('Corr_%s'%(graphkey))
                     graph.SetTitle(dataobj.name.replace('_',' '))
                     
-                    # Little hack to set the y-axis title correctly
-                    # Using graph.GetYaxis().SetTitle(...) now is pointless,
+                    # Little hack to set the x-axis title correctly
+                    # Using graph.GetXaxis().SetTitle(...) now is pointless,
                     # because the underlying histogram axes have not yet been made.
                     # So I'll augment the python object to store the information for later.
                     try:
-                        graph.ytitle = dataobj.CLnames[CLtype]
+                        graph.xtitle = dataobj.CLnames[CLtype]
                     except KeyError:
                         print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
-                        graph.ytitle = 'CL'
+                        graph.xtitle = 'CL'
                     self.__correlations[graphkey] = graph
 
                 # Fill the graph with data
@@ -88,19 +92,23 @@ class CorrelationPlotter:
                     # Add the new point
                     if info[CLtype] is not None:
                         pointNumber = graph.GetN()
-                        graph.SetPoint(pointNumber, info['yield'], info[CLtype])
+                        graph.SetPoint(pointNumber, info[CLtype], info['yield'])
 
                         # Check to see if we have an error on the yield
                         try:
-                            graph.SetPointError(pointNumber, info['yield'].error, 0)
+                            graph.SetPointError(pointNumber, 0, info['yield'].error)
                         except AttributeError:
                             # Absolutely OK, we just don't have errors
                             pass
 
                 # Finally, attempt to fit the graph
                 if graph.GetN():
-                    self.FitGraph(graph, dataobj.fitfunctions[CLtype])
-
+                    # Give a warning if this was already fitted (shouldn't happen?)
+                    if self.__fitresults.has_key(graphkey):
+                        print 'WARNING: Graph %s has already been fitted'%(graphkey)
+                    # Overwrite previous fit result, if any
+                    self.__fitresults[graphkey] = self.FitGraph(graph, dataobj.fitfunctions[CLtype])
+                    
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
 
@@ -133,9 +141,9 @@ class CorrelationPlotter:
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
             graph.Draw('ap')
-            graph.GetXaxis().SetTitle('Yield')
+            graph.GetYaxis().SetTitle('Yield')
             try:
-                graph.GetYaxis().SetTitle(graph.ytitle) # Using the augmentation provided in self.MakeCorrelations()
+                graph.GetXaxis().SetTitle(graph.xtitle) # Using the augmentation provided in self.MakeCorrelations()
             except AttributeError:
                 # Should not happen, this is just in case
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
@@ -164,6 +172,38 @@ class CorrelationPlotter:
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
 
+        # Now plot some summary fit results
+        chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
+                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        probplot = ROOT.TH1D('probplot',';;Fit probability',
+                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        
+        for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
+
+            chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+
+            if self.__fitresults[analysisSR].Ndf():
+                chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
+            probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
+
+        # Make sure the labels can be read, and adjust the canvas margin to fit
+        chi2plot.GetXaxis().LabelsOption('v')
+        probplot.GetXaxis().LabelsOption('v')
+        oldmargin = self.__canvas.GetBottomMargin()
+        self.__canvas.SetBottomMargin(0.4)
+
+        chi2plot.SetMinimum(0)
+        chi2plot.Draw()
+        self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
+
+        probplot.SetMinimum(0)
+        probplot.Draw()
+        self.__canvas.Print('/'.join([outdir,'prob.pdf']))
+
+        # Reset the canvas
+        self.__canvas.SetBottomMargin(oldmargin)
+
     def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data.
         If called before the graph is plotted and/or saved, the results are included in those steps."""
@@ -182,6 +222,8 @@ class CorrelationPlotter:
         # E: Better error estimate
         # M: Improve fit results
         # S: Returns full fit result
+        print
+        print 'INFO: Fitting',graph.GetName()
         fitresult = graph.Fit(fitfunc, "S")
 
         # A nonzero fit status indicates an error
