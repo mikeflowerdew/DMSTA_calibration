@@ -265,6 +265,11 @@ def PassArguments():
         action = "store_true",
         dest = "fourleppaper",
         help = "Read input from 4L signature paper (for testing)")
+    parser.add_argument(
+        "--productcheck",
+        action = "store_true",
+        dest = "productcheck",
+        help = "Run a consistency check on the 4L data")
 
     return parser.parse_args()
 
@@ -307,6 +312,30 @@ if __name__ == '__main__':
         data = reader.ReadFiles()
         plotdir = 'fourleppaperplots'
         
+    elif cmdlinearguments.productcheck:
+
+        from Reader_DMSTA import DMSTAReader
+
+        # Analyse just the 4L data
+        perSRreader = DMSTAReader()
+        perSRreader.analysisdict = {
+            '4L': DMSTAReader.analysisdict['4L'],
+            }
+        perSRdata = perSRreader.ReadFiles()
+
+        # Read the combined 4L data
+        # There's no point in reading the yields!
+        combinationReader = DMSTAReader(
+            yieldfile = None,
+            DSlist = None,
+            )
+        combinationReader.analysisdict = {
+            '4L': DMSTAReader.analysisdict['4L'],
+            }
+        combinationData = combinationReader.ReadFiles()
+
+        plotdir = 'productplots'
+
     else:
         
         # Default operation: do the real anaylsis
@@ -316,9 +345,13 @@ if __name__ == '__main__':
         data = reader.ReadFiles()
         plotdir = 'plots'
 
-    plotter = CorrelationPlotter(data)
-    plotter.MakeCorrelations()
-    plotter.PlotData(plotdir)
-    plotter.SaveData('/'.join([plotdir,'results.root']))
+    try:
+        plotter = CorrelationPlotter(data)
+        plotter.MakeCorrelations()
+        plotter.PlotData(plotdir)
+        plotter.SaveData('/'.join([plotdir,'results.root']))
+    except NameError:
+        # If we didn't define "data", skip it
+        pass
 
     

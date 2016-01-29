@@ -66,9 +66,6 @@ class DMSTAReader:
         for analysis in self.analysisdict.keys():
             result = self.ReadCLValues(result, analysis)
 
-        # Keep warning/info messages from different sources separate
-        print
-            
         # Then add the yields
         result = self.ReadYields(result)
 
@@ -82,6 +79,9 @@ class DMSTAReader:
         The information from self.__dslist is stored in self.__DSIDdict
         """
         
+        if not self.__dslist:
+            return
+            
         # First open the DSlist to find which models we need
         f = open(self.__dslist)
         
@@ -114,6 +114,12 @@ class DMSTAReader:
         """Reads the model yields from the given ntuple file.
         The data argument should be an already-populated list of SignalRegion instances.
         """
+
+        if not self.__yieldfile:
+            return
+            
+        # Keep warning/info messages from different sources separate
+        print
             
         # Open up the ROOT ntuple with the yields and iterate over the entries
         # looking for relevant models
