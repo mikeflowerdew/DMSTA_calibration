@@ -59,47 +59,50 @@ class CorrelationPlotter:
 
         for dataobj in self.__data:
 
-            # Additional loop over the different CL values
+            # Additional loop over the different CL values and correlation variables
             for CLtype in dataobj.InfoList():
+                for var in dataobj.CorrVarList():
 
-                # Create the new TGraph
-                graphkey = '_'.join([dataobj.name,CLtype])
-                try:
-                    graph = self.__correlations[graphkey]
-                except KeyError:
-                    graph = ROOT.TGraphErrors()
-                    graph.SetName('Corr_%s'%(graphkey))
-                    graph.SetTitle(dataobj.name.replace('_',' '))
-                    
-                    # Little hack to set the y-axis title correctly
-                    # Using graph.GetYaxis().SetTitle(...) now is pointless,
-                    # because the underlying histogram axes have not yet been made.
-                    # So I'll augment the python object to store the information for later.
+                    # Create the new TGraph
+                    graphkey = '_'.join([dataobj.name,CLtype,var])
                     try:
-                        graph.ytitle = dataobj.CLnames[CLtype]
+                        graph = self.__correlations[graphkey]
                     except KeyError:
-                        print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
-                        graph.ytitle = 'CL'
-                    self.__correlations[graphkey] = graph
-
-                # Fill the graph with data
-                for model,info in dataobj.data.iteritems():
-
-                    # Add the new point
-                    if info[CLtype] is not None:
-                        pointNumber = graph.GetN()
-                        graph.SetPoint(pointNumber, info['yield'], info[CLtype])
-
-                        # Check to see if we have an error on the yield
+                        graph = ROOT.TGraph2DErrors()
+                        graph.SetName('Corr_%s'%(graphkey))
+                        graph.SetTitle(dataobj.name.replace('_',' '))
+                    
+                        # Little hack to set the y-axis title correctly
+                        # Using graph.GetYaxis().SetTitle(...) now is pointless,
+                        # because the underlying histogram axes have not yet been made.
+                        # So I'll augment the python object to store the information for later.
                         try:
-                            graph.SetPointError(pointNumber, info['yield'].error, 0)
-                        except AttributeError:
-                            # Absolutely OK, we just don't have errors
-                            pass
+                            graph.ytitle = dataobj.CLnames[CLtype]
+                        except KeyError:
+                            print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
+                            graph.ytitle = 'CL'
+                        self.__correlations[graphkey] = graph
 
-                # Finally, attempt to fit the graph
-                if graph.GetN():
-                    self.FitGraph(graph, dataobj.fitfunctions[CLtype])
+                    # Fill the graph with data
+                    for model,info in dataobj.data.iteritems():
+                        for var in dataobj.CorrVarList():
+
+                            # Add the new point
+                            if info[CLtype] is not None:
+                                # Check that variable and graph correspond
+                                if var in graph.GetName(): 
+                                    pointNumber = graph.GetN()
+                                    graph.SetPoint(pointNumber, info['yield'].value, info[CLtype], info[var])
+                                    # Check to see if we have an error on the yield
+                                    try:
+                                        graph.SetPointError(pointNumber, info['yield'].error, 0, 0)
+                                    except AttributeError:
+                                        # Absolutely OK, we just don't have errors
+                                        pass
+
+                    # Finally, attempt to fit the graph
+                    if graph.GetN():
+                        self.FitGraph(graph, dataobj.fitfunctions[CLtype])
 
     def SaveData(self, fname):
         """Saves the graphs in a TFile"""
@@ -130,9 +133,10 @@ class CorrelationPlotter:
 
         for analysisSR,graph in self.__correlations.items():
 
+            ROOT.gStyle.SetPalette(1)
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
-            graph.Draw('ap')
+            graph.Draw('pcolz err')
             graph.GetXaxis().SetTitle('Yield')
             try:
                 graph.GetYaxis().SetTitle(graph.ytitle) # Using the augmentation provided in self.MakeCorrelations()
@@ -141,24 +145,28 @@ class CorrelationPlotter:
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
             graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
-            graph.Draw('ap')
+                
+            graph.Draw('pcolz err')
+            graph.GetZaxis().SetLabelOffset(-0.1)
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
+            self.__canvas.SetTheta(89.9)
+            self.__canvas.SetPhi(0.0001)
 
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf(']))
+            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
             # Try some variations with log scales
-            self.__canvas.SetLogx()
-            self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
-
-            self.__canvas.SetLogx(0)
-            self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
-
-            self.__canvas.SetLogx()
-            self.__canvas.SetLogy(0)
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf)']))
+#            self.__canvas.SetLogx()
+#            self.__canvas.SetLogy()
+#            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
+            
+#            self.__canvas.SetLogx(0)
+#            self.__canvas.SetLogy()
+#            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
+            
+#            self.__canvas.SetLogx()
+#            self.__canvas.SetLogy(0)
+#            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf)']))
 
             # Reset to linear scale
             self.__canvas.SetLogx(0)

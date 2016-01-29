@@ -23,7 +23,7 @@ class SignalRegion:
         'CLsbExp': 'Expected CL_{s+b}',
     }
     
-    def __init__(self, name, infolist=None):
+    def __init__(self, name, infolist=None, corrVarList=None):
         """Initialise the object with a name and (optionally) a list of which CL info will be provided.
         Name would usually encode the analysis and SR names.
         The infolist describes which CL-like quantities will be supplied.
@@ -41,12 +41,18 @@ class SignalRegion:
         if infolist is None: self.__infolist = ['CLs','CLb','CLsb']
         else:                self.__infolist = infolist
 
+        if corrVarList is None: self.__corrVarList = ['cos_tau','tanb','mu','m_chi_10','m_chi_20','m_chi_30','m_chi_40','m_chi_1p','m_chi_2p']
+        else:                   self.__corrVarList = corrVarList
+
         # Data (CL values) and fit functions will be filled later
         self.data = {}
         self.fitfunctions = dict.fromkeys(self.__infolist) # Values default to None
 
     def InfoList(self):
         return self.__infolist
+
+    def CorrVarList(self):
+        return self.__corrVarList
     
     def AddData(self, modelID):
         """Creates a new entry in self.data, if needed, and return the entry.
@@ -61,7 +67,7 @@ class SignalRegion:
         The data entry is returned.
         """
 
-        self.data[modelID] = dict.fromkeys(['yield']+self.__infolist)
+        self.data[modelID] = dict.fromkeys(['yield']+self.__infolist+self.__corrVarList)
         return self.data[modelID]
     
     def CheckData(self, removeduds=True):

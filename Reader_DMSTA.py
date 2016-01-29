@@ -18,6 +18,17 @@ class DMSTAReader:
         # '2L': 'EwkTwoLepton_SR',
         # '2T': 'EwkTwoTau_SR',
         }
+    corrVarDict = {
+        'cos_tau':  'cos_tau',
+        'tanb':     'tanb',
+        'mu':       'mu',
+        'm_chi_10': 'm_chi_10',
+        'm_chi_20': 'm_chi_20',
+        'm_chi_30': 'm_chi_30',
+        'm_chi_40': 'm_chi_40',
+        'm_chi_1p': 'm_chi_1p',
+        'm_chi_2p': 'm_chi_2p',
+        }
     
     # Gah, way too many arguments - could fix with slots if I have time
     def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_sim.root',
@@ -116,6 +127,10 @@ class DMSTAReader:
         tree.SetBranchStatus('modelName', 1)
         for analysis in self.analysisdict.values():
             tree.SetBranchStatus('*%s*'%(analysis), 1)
+        # Activate some more branches for correlation studies
+        for var in self.corrVarDict.values():
+            tree.SetBranchStatus(var,1)
+
 
         print 'INFO: Reader_DMSTA looping over %s entries'%(tree.GetEntries())
         filledYields = 0
@@ -142,6 +157,13 @@ class DMSTAReader:
 
                 try:
                     datum.data[DSID]['yield'] = valueWithError(truthyield,trutherror)
+                    for var in self.corrVarDict.values():
+                        # Need to absolute value of mass parameters due to feature causing negative mass
+                        # in som cases
+                        if 'm_chi' in var:
+                            datum.data[DSID][var] = abs(getattr(entry, var))
+                        else:
+                            datum.data[DSID][var] = getattr(entry, var)
                     filledYields += 1
                 except KeyError:
                     # FIXME: Should check if the model is in DSIDdict and the yield is high and print a warning if it's not in data
