@@ -16,7 +16,7 @@ class DMSTAReader:
         '3L': 'EwkThreeLepton_3L',
         '4L': 'EwkFourLepton',
         '2L': 'EwkTwoLepton',
-        # '2T': 'EwkTwoTau_SR',
+        '2T': 'EwkTwoTau',
         }
     
     # Gah, way too many arguments - could fix with slots if I have time
@@ -116,7 +116,7 @@ class DMSTAReader:
         """
 
         if not self.__yieldfile:
-            return
+            return data
             
         # Keep warning/info messages from different sources separate
         print
