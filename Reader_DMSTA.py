@@ -46,6 +46,7 @@ class DMSTAReader:
         self.__fileprefix = fileprefix
         self.__filesuffix = filesuffix
         self.__dslist = DSlist
+        self.__DSIDdict = {} # Formed from the DSlist in a bit
         
     def ReadFiles(self):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
@@ -53,6 +54,9 @@ class DMSTAReader:
 
         # This is what we want to return
         result = []
+
+        # First map model IDs to DSIDs
+        self.__ReadDSIDs()
 
         # Because the input is split between different formats,
         # I need to break the reading down into two steps.
@@ -73,14 +77,13 @@ class DMSTAReader:
 
         return result
 
-    def ReadYields(self, data):
-        """Reads the model yields from the given ntuple file.
-        The data argument should be an already-populated list of SignalRegion instances.
+    def __ReadDSIDs(self):
+        """Map the model number to the ATLAS dataset ID.
+        The information from self.__dslist is stored in self.__DSIDdict
         """
-
+        
         # First open the DSlist to find which models we need
         f = open(self.__dslist)
-        DSIDdict = {} # modelID : DSID for easy lookup later
         
         for line in f:
 
@@ -101,11 +104,18 @@ class DMSTAReader:
                 print splitline
                 raise # Because I want to see what this is and fix it
 
-            DSIDdict[modelID] = DSID
+            self.__DSIDdict[modelID] = DSID
 
         f.close()
+
+        return
+
+    def ReadYields(self, data):
+        """Reads the model yields from the given ntuple file.
+        The data argument should be an already-populated list of SignalRegion instances.
+        """
             
-        # Now open up the ROOT ntuple and iterate over the entries
+        # Open up the ROOT ntuple with the yields and iterate over the entries
         # looking for relevant models
         yieldfile = ROOT.TFile.Open(self.__yieldfile)
 
@@ -130,9 +140,8 @@ class DMSTAReader:
             modelID = int(entry.modelName)
 
             try:
-                DSID = DSIDdict[modelID]
+                DSID = self.__DSIDdict[modelID]
             except KeyError:
-                print 'Skipping model %s'%(modelID)
                 continue # Not interested (yet)
 
             # Loop over known analyses/SRs and look for the truth yield
@@ -147,21 +156,10 @@ class DMSTAReader:
                     datum.data[DSID]['yield'] = valueWithError(truthyield,trutherror)
                     filledYields += 1
 
-                    if analysisSR.startswith('2L'):
-                        print '%s model %s: truth yield is %s +- %s'%(analysisSR, modelID, truthyield, trutherror)
-                        print datum.data[DSID]
-
                 except KeyError:
                     # FIXME: Should check if the model is in DSIDdict and the yield is high and print a warning if it's not in data
-                    print 'Skipping %s for %s'%(modelID,analysisSR)
                     pass
 
-        # Some debug output
-        obj = next((x for x in data if x.name == '2L_SR_WWa'), None)
-        if obj:
-            from pprint import pprint
-            pprint(obj.data)
-            
         print 'Filled %i entries with yields'%(filledYields)
         return data
     
@@ -192,7 +190,8 @@ class DMSTAReader:
             print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
             for fname in infiles:
                 modelname = int(fname.split('/')[-1].split('.')[0])
-                data = self.__ReadYamlFiles(data, analysis, fname, modelname)
+                DSID = self.__DSIDdict[modelname]
+                data = self.__ReadYamlFiles(data, analysis, fname, DSID)
 
         return data
 
