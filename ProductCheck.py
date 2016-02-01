@@ -75,8 +75,17 @@ class ProductCheck:
         """Returns a graph of the ratio Pi(CLs_SR)/CLs_comb vs number of contributing regions."""
 
         whichComb = self.__CombOrder.index('4L_combination_'+combination)
-        indices = [0,2,3,5,6,8] if 'aaa' in combination else [1,2,4,5,7,8] # FIXME
-
+        indices = []
+        for idx,SR in enumerate(self.__SRorder):
+            if 'noZ' in SR:
+                if 'aaa' in combination and 'noZa' in SR:
+                    indices.append(idx)
+                elif 'bbb' in combination and 'noZb' in SR:
+                    indices.append(idx)
+            else:
+                # Z region, always add
+                indices.append(idx)
+        
         result = ROOT.TGraph()
         result.SetName('CLsRatio_%s_%s'%(combination,CLsThreshold))
 
