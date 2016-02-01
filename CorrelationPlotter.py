@@ -314,47 +314,10 @@ if __name__ == '__main__':
         
     elif cmdlinearguments.productcheck:
 
-        from Reader_DMSTA import DMSTAReader
-
-        # Analyse just the 4L data
-        perSRreader = DMSTAReader()
-        perSRreader.analysisdict = {
-            '4L': DMSTAReader.analysisdict['4L'],
-            }
-        perSRdata = perSRreader.ReadFiles()
-
-        # Read the combined 4L data
-        # There's no point in reading the yields!
-        combinationReader = DMSTAReader(
-            yieldfile = None,
-            DSlist = None,
-            )
-        combinationReader.analysisdict = {
-            '4L_combination': DMSTAReader.analysisdict['4L'],
-            }
-        combinationData = combinationReader.ReadFiles()
-
-        plotdir = 'productplots'
-
-        # FIXME: Experimental while I think about how to do this
-        print [thing.name for thing in perSRdata]
-        print combinationData[0].name
-        for modelID,info in combinationData[0].data.items()[:10]:
-            
-            combinedCLs = info['CLs']
-
-            separateCLs = []
-            indices = [0,2,3,5,6,8] if 'aaa' in combinationData[0].name else [1,2,4,5,7,8]
-            for index in indices:
-                try:
-                    separateCLs.append(perSRdata[index].data[modelID]['CLs'])
-                except KeyError:
-                    # May have no results in that model for that SR
-                    pass
-            from operator import mul
-            productCLs = reduce(mul, separateCLs, 1)
-            print modelID,combinedCLs,productCLs,separateCLs
-            print productCLs/combinedCLs if combinedCLs else 0.0
+        # Special run mode: a specific study
+        from ProductCheck import ProductCheck
+        checker = ProductCheck()
+        checker.RunAnalysis()
 
     else:
         
