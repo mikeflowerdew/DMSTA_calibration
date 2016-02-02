@@ -16,6 +16,7 @@ intree.SetBranchStatus('*EwkFourLepton*', 1)
 intree.SetBranchStatus('*EwkThreeLepton*', 1)
 intree.SetBranchStatus('*EwkTwoLepton*', 1)
 intree.SetBranchStatus('*EwkTwoTau*', 1)
+intree.SetBranchStatus('*DisappearingTrack*', 1)
 
 # Add some associated info about the models
 intree.SetBranchStatus('BF_chi_*', 1)

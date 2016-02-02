@@ -8,6 +8,8 @@ from ValueWithError import valueWithError
 def pullInOverflow(hist):
     """Pull the overflow into the final histogram bin."""
 
+    if not hist: return
+
     nbins = hist.GetNbinsX()
 
     lastbin  = valueWithError(hist.GetBinContent(nbins  ),hist.GetBinError(nbins ))
@@ -18,6 +20,55 @@ def pullInOverflow(hist):
 
     return
     
+def drawHistos(hname1,hname2,title,pdfname,hname3=''):
+    """Draw two plots on the same canvas,
+    both with overflows pulled in and normalised to unit area.
+    It is assumed that both histograms exist in ROOT.gDirectory.
+    """
+
+    # Draw the two histograms, making sure they have the same binning
+    hist1 = ROOT.gDirectory.Get(hname1)
+    hist2 = ROOT.gDirectory.Get(hname2)
+    hist3 = ROOT.gDirectory.Get(hname3) if hname3 else None
+
+    # Pull overflow into the histogram
+    pullInOverflow(hist1)
+    pullInOverflow(hist2)
+    pullInOverflow(hist3)
+
+    if not hist1.Integral(): return False
+
+    # Set up style and normalisation
+    hist1.SetLineColor(ROOT.kBlue)
+    hist1.Scale(1./hist1.Integral())
+
+    if hist2.Integral():
+        hist2.Sumw2()
+        hist2.Scale(1./hist2.Integral())
+
+    if hist3 and hist3.Integral():
+        hist3.SetMarkerColor(ROOT.kRed)
+        hist3.SetLineColor(ROOT.kRed)
+        hist3.Sumw2()
+        hist3.Scale(1./hist3.Integral())
+
+    # Sort which plot is bigger so they both fit on the canvas
+    if hist2.GetMaximum() > hist1.GetMaximum():
+        hist1.SetMaximum(1.1*hist2.GetMaximum())
+    if hist3 and hist3.GetMaximum() > hist1.GetMaximum():
+        hist1.SetMaximum(1.1*hist3.GetMaximum())
+
+    # Draw!
+    hist1.Draw('hist')
+    hist2.Draw('esame')
+    if hist3: hist3.Draw('esame')
+
+    # Add a title so I know what the plot is, and save!
+    ROOT.myText(0.2, 0.95, ROOT.kBlack, title)
+    canvas.Print(pdfname)
+
+    return True
+
 # Import & set up ATLAS style
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -31,6 +82,11 @@ simtree = simfile.Get('susy')
 
 nosimfile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_nosim.root')
 nosimtree = nosimfile.Get('susy')
+
+# Observed xsec limits from the paper, converted to events
+# Note that there is no SR0
+obslimits = [0,35.7,20.7,12.6,8.9]
+passdistrk = '||'.join(['EW_ExpectedEvents_DisappearingTrack_SR%i > %.1f'%(SR,obslimits[SR]) for SR in range(1,5)])
 
 # Set up the output file
 pdfname = 'Data_Yields/SimSkim.pdf'
@@ -61,39 +117,31 @@ for branchname in branchlist:
 
     # Draw the two histograms, making sure they have the same binning
     nosimtree.Draw(branchname+'>>hnosim'+branchname+binstr)
-    nosimhist = ROOT.gDirectory.Get('hnosim'+branchname)
-
     simtree.Draw(branchname+'>>hsim'+branchname+binstr)
-    simhist = ROOT.gDirectory.Get('hsim'+branchname)
+    nosimtree.Draw(branchname+'>>hdistrk'+branchname+binstr,
+                   passdistrk)
 
-    # Pull overflow into the histogram
-    pullInOverflow(simhist)
-    pullInOverflow(nosimhist)
-
-    if not nosimhist.Integral(): continue
-
-    # Set up style and normalisation
-    nosimhist.SetLineColor(ROOT.kBlue)
-    nosimhist.Scale(1./nosimhist.Integral())
-
-    if simhist.Integral():
-        simhist.Sumw2()
-        simhist.Scale(1./simhist.Integral())
-
-    # Sort which plot is bigger so they both fit on the canvas
-    if simhist.GetMaximum() > nosimhist.GetMaximum():
-        nosimhist.SetMaximum(1.1*simhist.GetMaximum())
-
-    # Draw!
-    nosimhist.Draw('hist')
-    simhist.Draw('esame')
-
-    # Add a title so I know what the plot is, and save!
-    ROOT.myText(0.2, 0.95, ROOT.kBlack, branchname)
-    canvas.Print(pdfname)
+    drawHistos('hnosim'+branchname,'hsim'+branchname,
+               branchname, pdfname, 'hdistrk'+branchname)
 
 # Close the pdf file
 canvas.Print(pdfname+']')
+
+# I need more info about the disappearing track analysis
+
+nosimentries = nosimtree.GetEntries()
+for SR in range(1,5):
+    passlimit = 'EW_ExpectedEvents_DisappearingTrack_SR%i > %.1f'%(SR,obslimits[SR])
+    ewkexclude = '(EW_Cat_EwkTwoLepton > 1 || EW_Cat_EwkThreeLepton > 1 || EW_Cat_EwkFourLepton > 1 || EW_Cat_EwkTwoTau > 1)'
+    nosimmodels = nosimtree.GetEntries(passlimit)
+    nosimmodels_excluded = nosimtree.GetEntries(passlimit+'&&'+ewkexclude)
+    print
+    print 'Studying DisTrk SR%i'%(SR)
+    print '%i of %i non-simulated models above limit'%(nosimmodels,nosimentries)
+    print 'Of these, %i might be excluded by EWK searches'%(nosimmodels_excluded)
+
+print
+print 'A total of %i models are excluded by the DisTrk analysis'%(nosimtree.GetEntries(passdistrk))
 
 simfile.Close()
 nosimfile.Close()
