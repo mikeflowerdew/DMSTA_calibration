@@ -193,8 +193,12 @@ class CorrelationPlotter:
                 chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
                 
             probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
+            
             param0plot.SetBinContent(ibin+1, -self.__fitresults[analysisSR].Value(0))
+            param0plot.SetBinError(ibin+1, self.__fitresults[analysisSR].Error(0))
+            
             param1plot.SetBinContent(ibin+1, -self.__fitresults[analysisSR].Value(1))
+            param1plot.SetBinError(ibin+1, self.__fitresults[analysisSR].Error(1))
 
         # Make sure the labels can be read, and adjust the canvas margin to fit
         chi2plot.GetXaxis().LabelsOption('v')
@@ -255,6 +259,7 @@ class CorrelationPlotter:
         # Example extraction of results, see link above.
         # chi2 = fitresult.Chi2()
         # parameters = [fitresult.Value(i) for i in range(fitresult.NPar())]
+        # errors = [fitresult.Error(i) for i in range(fitresult.NPar())]
         
         return fitresult # Dunno if I need this or not
             
