@@ -182,51 +182,6 @@ class ProductCheck:
             graph_bbb = self.__CLsMatchPlot('bbbZ',threshold/100.)
             self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
 
-# 
-#             # plot the plots
-#             graph_aaa.SetMarkerSize(0.4)
-#             graph_aaa.Draw('ap')
-#             ROOT.myText(0.2, 0.95, ROOT.kBlack, 'aaaZ combination')
-#             can.Print(fname)
-# 
-#             # Plot the 1D projections
-#             histograms_aaa = self.__1Dprojections(graph_aaa)
-#             can.Clear()
-#             can.Divide(3,2)
-#             for i,h in enumerate(histograms_aaa):
-#                 can.cd(i+1)
-#                 h.Draw()
-#                 ROOT.myText(0.2, 0.95, ROOT.kBlack, 'aaaZ %i SRs'%(i+1))
-#                 ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
-#                 ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-#                 ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.7))))
-#                 ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Overflow: %i'%(h.GetBinContent(h.GetNbinsX()+1)))
-#             can.Print(fname)
-#             can.Clear()
-#             
-#             graph_bbb.SetMarkerSize(0.4)
-#             graph_bbb.Draw('ap')
-#             ROOT.myText(0.2, 0.95, ROOT.kBlack, 'bbbZ combination')
-#             can.Print(fname)
-# 
-#             # Plot the 1D projections
-#             histograms_bbb = self.__1Dprojections(graph_bbb)
-#             can.Clear()
-#             can.Divide(3,2)
-#             for i,h in enumerate(histograms_bbb):
-#                 can.cd(i+1)
-#                 h.Draw()
-#                 ROOT.myText(0.2, 0.95, ROOT.kBlack, 'bbbZ %i SRs'%(i+1))
-#                 ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
-#                 ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-#                 ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.7))))
-#                 ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Overflow: %i'%(h.GetBinContent(h.GetNbinsX()+1)))
-#             can.Print(fname)
-#             can.Clear()
-#             
-#             # Close the file, on to the next
-#             can.Print(fname+']')
-
         # Try an experimental function
         def twosmallest(indict):
             mylist = sorted(indict.values())[:2]
