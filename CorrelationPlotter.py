@@ -175,23 +175,42 @@ class CorrelationPlotter:
         # Now plot some summary fit results
         chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
                              len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
-        probplot = ROOT.TH1D('probplot',';;Fit probability',
-                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        probplot = chi2plot.Clone('probplot')
+        probplot.GetYaxis().SetTitle('Fit probability')
+        param0plot = chi2plot.Clone('param0plot')
+        param0plot.GetYaxis().SetTitle('Param 0')
+        param1plot = chi2plot.Clone('param1plot')
+        param1plot.GetYaxis().SetTitle('Param 1')
         
         for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
 
             chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
             probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            param0plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            param1plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
 
             if self.__fitresults[analysisSR].Ndf():
                 chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
+                
             probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
+            param0plot.SetBinContent(ibin+1, -self.__fitresults[analysisSR].Value(0))
+            param1plot.SetBinContent(ibin+1, -self.__fitresults[analysisSR].Value(1))
 
         # Make sure the labels can be read, and adjust the canvas margin to fit
         chi2plot.GetXaxis().LabelsOption('v')
+        chi2plot.GetXaxis().SetLabelSize(0.03)
+        
         probplot.GetXaxis().LabelsOption('v')
+        probplot.GetXaxis().SetLabelSize(0.03)
+        
+        param0plot.GetXaxis().LabelsOption('v')
+        param0plot.GetXaxis().SetLabelSize(0.03)
+        
+        param1plot.GetXaxis().LabelsOption('v')
+        param1plot.GetXaxis().SetLabelSize(0.03)
+        
         oldmargin = self.__canvas.GetBottomMargin()
-        self.__canvas.SetBottomMargin(0.4)
+        self.__canvas.SetBottomMargin(0.3)
 
         chi2plot.SetMinimum(0)
         chi2plot.Draw()
@@ -201,18 +220,20 @@ class CorrelationPlotter:
         probplot.Draw()
         self.__canvas.Print('/'.join([outdir,'prob.pdf']))
 
+        param0plot.Draw()
+        self.__canvas.SetLogy()
+        self.__canvas.Print('/'.join([outdir,'param0.pdf']))
+
+        param1plot.Draw()
+        self.__canvas.SetLogy()
+        self.__canvas.Print('/'.join([outdir,'param1.pdf']))
+
         # Reset the canvas
         self.__canvas.SetBottomMargin(oldmargin)
 
     def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data.
         If called before the graph is plotted and/or saved, the results are included in those steps."""
-
-        # Things to be defined:
-        # * How to know what function to use (string in Fit? more complex function).
-        #   Maybe have an input from the Reader class?
-        # * How to perform the fit, including error-handling.
-        # * How to record the fit results. Best store the complete result, for flexibility.
 
         # If no fitting function is supplied, just bail
         if fitfunc is None: return
@@ -224,7 +245,7 @@ class CorrelationPlotter:
         # S: Returns full fit result
         print
         print 'INFO: Fitting',graph.GetName()
-        fitresult = graph.Fit(fitfunc, "S")
+        fitresult = graph.Fit(fitfunc, "SRB")
 
         # A nonzero fit status indicates an error
         if fitresult.Status():

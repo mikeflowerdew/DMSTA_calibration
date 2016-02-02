@@ -228,8 +228,11 @@ class DMSTAReader:
                 obj.branchname = '_'.join([self.analysisdict[analysis],self.NtupleSRname(SRname,analysis)])
                 
                 obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
-                obj.fitfunctions['CLs'].SetParameter(0,-0.1)
-                obj.fitfunctions['CLs'].SetParameter(1,1.)
+                obj.fitfunctions['CLs'].SetParameter(0,-10)
+                obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
+                obj.fitfunctions['CLs'].SetParameter(1,-5.)
+                obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+                obj.fitfunctions['CLs'].SetRange(0,0.8)
 
             # The data is stored as a list, use ast to read it
             import ast
@@ -277,7 +280,14 @@ class DMSTAReader:
 
         obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
         obj.fitfunctions['CLs'].SetParameter(0,-0.1)
+        obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
         obj.fitfunctions['CLs'].SetParameter(1,1.)
+        obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+        obj.fitfunctions['CLs'].SetRange(0,0.8)
+
+        # Special case(s)
+        if SRname in ['SR0aBIN01','SR0aBIN02','SR0aBIN03','SR0aBIN04']:
+            obj.fitfunctions['CLs'].SetRange(0,0.7)
 
         f = open(fname)
         for line in f:

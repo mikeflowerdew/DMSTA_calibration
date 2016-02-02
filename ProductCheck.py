@@ -135,15 +135,18 @@ class ProductCheck:
 
             info.ComputeProduct(CLsThreshold)
 
-            if info.CombCLs:
+            if info.CombCLs and info.CombCLs < 0.5:
                 result.SetPoint(result.GetN(),len(info.SRCLs),info.ProductCLs/info.CombCLs)
 
                 # FIXME
-                try:
-                    if abs(CLsThreshold-0.75) < 0.01 and info.ProductCLs/info.CombCLs < 0.5:
-                        print info.CombCLs,info.ProductCLs,info.SRCLs
-                except:
-                    pass
+#                 try:
+#                     # FIXME - debug only
+#                     if info.CombCLs and abs(info.ProductCLs/info.CombCLs - 1.) < 0.05 and len(info.SRCLs) > 3:
+#                         print info.CombCLs,info.ProductCLs,info.SRCLs
+#                     if abs(CLsThreshold-0.75) < 0.01 and info.ProductCLs/info.CombCLs < 0.5:
+#                         print info.CombCLs,info.ProductCLs,info.SRCLs
+#                 except:
+#                     pass
             
         return result
 
@@ -177,7 +180,6 @@ class ProductCheck:
             
             # Create the output file and input data
             fname = '/'.join([outdir,'threshold_%i.pdf'%(threshold)])
-            can.Print(fname+'[')
             graph_aaa = self.__CLsMatchPlot('aaaZ',threshold/100.)
             graph_bbb = self.__CLsMatchPlot('bbbZ',threshold/100.)
             self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
@@ -220,12 +222,15 @@ class ProductCheck:
         canvas.Divide(3,2)
         for i,h in enumerate(histograms_aaa):
             canvas.cd(i+1)
+            # Make some space for the legend
+            if h.GetMaximum() < 10:
+                h.SetMaximum(1.5*h.GetMaximum())
             h.Draw()
             ROOT.myText(0.2, 0.95, ROOT.kBlack, 'aaaZ %i SRs'%(i+1))
             ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
             ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.7))))
-            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Overflow: %i'%(h.GetBinContent(h.GetNbinsX()+1)))
+            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
+            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
         canvas.Print(fname)
         canvas.Clear()
 
@@ -241,12 +246,15 @@ class ProductCheck:
         canvas.Divide(3,2)
         for i,h in enumerate(histograms_bbb):
             canvas.cd(i+1)
+            # Make some space for the legend
+            if h.GetMaximum() < 10:
+                h.SetMaximum(1.5*h.GetMaximum())
             h.Draw()
             ROOT.myText(0.2, 0.95, ROOT.kBlack, 'bbbZ %i SRs'%(i+1))
             ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
             ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.7))))
-            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Overflow: %i'%(h.GetBinContent(h.GetNbinsX()+1)))
+            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
+            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
         canvas.Print(fname)
         canvas.Clear()
     
