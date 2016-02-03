@@ -177,28 +177,26 @@ class CorrelationPlotter:
                              len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
         probplot = chi2plot.Clone('probplot')
         probplot.GetYaxis().SetTitle('Fit probability')
-        param0plot = chi2plot.Clone('param0plot')
-        param0plot.GetYaxis().SetTitle('Param 0')
-        param1plot = chi2plot.Clone('param1plot')
-        param1plot.GetYaxis().SetTitle('Param 1')
+        paramplots = [chi2plot.Clone('param%iplot'%(i)) for i in range(self.__fitresults.values()[0].NPar())]
+        for iplot in range(len(paramplots)):
+            paramplots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
         
         for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
 
             chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
             probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
-            param0plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
-            param1plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            for iplot in range(len(paramplots)):
+                paramplots[iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+
 
             if self.__fitresults[analysisSR].Ndf():
                 chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
                 
             probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
-            
-            param0plot.SetBinContent(ibin+1, -self.__fitresults[analysisSR].Value(0))
-            param0plot.SetBinError(ibin+1, self.__fitresults[analysisSR].Error(0))
-            
-            param1plot.SetBinContent(ibin+1, -self.__fitresults[analysisSR].Value(1))
-            param1plot.SetBinError(ibin+1, self.__fitresults[analysisSR].Error(1))
+
+            for iplot in range(len(paramplots)):
+                paramplots[iplot].SetBinContent(ibin+1, abs(self.__fitresults[analysisSR].Value(iplot)))
+                paramplots[iplot].SetBinError(ibin+1, self.__fitresults[analysisSR].Error(iplot))
 
         # Make sure the labels can be read, and adjust the canvas margin to fit
         chi2plot.GetXaxis().LabelsOption('v')
@@ -207,12 +205,10 @@ class CorrelationPlotter:
         probplot.GetXaxis().LabelsOption('v')
         probplot.GetXaxis().SetLabelSize(0.03)
         
-        param0plot.GetXaxis().LabelsOption('v')
-        param0plot.GetXaxis().SetLabelSize(0.03)
-        
-        param1plot.GetXaxis().LabelsOption('v')
-        param1plot.GetXaxis().SetLabelSize(0.03)
-        
+        for iplot in range(len(paramplots)):
+            paramplots[iplot].GetXaxis().LabelsOption('v')
+            paramplots[iplot].GetXaxis().SetLabelSize(0.03)
+
         oldmargin = self.__canvas.GetBottomMargin()
         self.__canvas.SetBottomMargin(0.3)
 
@@ -224,13 +220,10 @@ class CorrelationPlotter:
         probplot.Draw()
         self.__canvas.Print('/'.join([outdir,'prob.pdf']))
 
-        param0plot.Draw()
-        self.__canvas.SetLogy()
-        self.__canvas.Print('/'.join([outdir,'param0.pdf']))
-
-        param1plot.Draw()
-        self.__canvas.SetLogy()
-        self.__canvas.Print('/'.join([outdir,'param1.pdf']))
+        for iplot in range(len(paramplots)):
+            paramplots[iplot].Draw()
+            self.__canvas.SetLogy()
+            self.__canvas.Print('/'.join([outdir,'param%i.pdf'%(iplot)]))
 
         # Reset the canvas
         self.__canvas.SetBottomMargin(oldmargin)
@@ -354,13 +347,10 @@ if __name__ == '__main__':
         data = reader.ReadFiles()
         plotdir = 'plots'
 
-    try:
+    if 'data' in dir():
         plotter = CorrelationPlotter(data)
         plotter.MakeCorrelations()
         plotter.PlotData(plotdir)
         plotter.SaveData('/'.join([plotdir,'results.root']))
-    except NameError:
-        # If we didn't define "data" or it's a different type, skip it
-        pass
 
     
