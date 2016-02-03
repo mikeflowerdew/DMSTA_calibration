@@ -201,6 +201,23 @@ class DMSTAReader:
 
         return data
 
+    def __SetupFitFunc(self, SRobj):
+        """Sets up fitting function, to avoid duplication in the
+        YAML and pMSSM file-reading methods.
+        Could be extended to SR-specific configs using SRobj.name
+        """
+
+        SRobj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)++1')
+        SRobj.fitfunctions['CLs'].SetParameter(0,-10.)
+        SRobj.fitfunctions['CLs'].SetParLimits(0,-500,0)
+        SRobj.fitfunctions['CLs'].SetParameter(1,-10.)
+        SRobj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+        SRobj.fitfunctions['CLs'].SetRange(0,0.8)
+
+        # Special case(s)
+        if SRobj.name in ['3L_SR0aBIN01','3L_SR0aBIN02','3L_SR0aBIN03','3L_SR0aBIN04']:
+            SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+
     def __ReadYamlFiles(self, data, analysis, fname, modelname):
 
         f = open(fname)
@@ -226,13 +243,8 @@ class DMSTAReader:
 
                 # Store the equivalent ntuple branch name for convenience later
                 obj.branchname = '_'.join([self.analysisdict[analysis],self.NtupleSRname(SRname,analysis)])
-                
-                obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
-                obj.fitfunctions['CLs'].SetParameter(0,-10)
-                obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
-                obj.fitfunctions['CLs'].SetParameter(1,-5.)
-                obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
-                obj.fitfunctions['CLs'].SetRange(0,0.8)
+
+                self.__SetupFitFunc(obj)
 
             # The data is stored as a list, use ast to read it
             import ast
@@ -278,16 +290,7 @@ class DMSTAReader:
             print 'WARNING in Reader_DMSTA: already read-in file for %s'%(analysisSR)
             return data
 
-        obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
-        obj.fitfunctions['CLs'].SetParameter(0,-0.1)
-        obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
-        obj.fitfunctions['CLs'].SetParameter(1,-1.)
-        obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
-        obj.fitfunctions['CLs'].SetRange(0,0.8)
-
-        # Special case(s)
-        if SRname in ['SR0aBIN01','SR0aBIN02','SR0aBIN03','SR0aBIN04']:
-            obj.fitfunctions['CLs'].SetRange(0,0.7)
+        self.__SetupFitFunc(obj)
 
         f = open(fname)
         for line in f:
