@@ -15,8 +15,8 @@ class DMSTAReader:
     analysisdict = {
         '3L': 'EwkThreeLepton_3L',
         '4L': 'EwkFourLepton',
-        # '2L': 'EwkTwoLepton_SR',
-        # '2T': 'EwkTwoTau_SR',
+        '2L': 'EwkTwoLepton',
+        '2T': 'EwkTwoTau',
         }
     corrVarDict = {
         'cos_tau':  'cos_tau',
@@ -45,6 +45,11 @@ class DMSTAReader:
         Lines beginning with a # are regarded as comments and ignored.
         The dataset will be used to label the model.
         Lines with non-numeric data will be ignored.
+
+        If no files of the above pattern are found for a particular directory, but files ending .yaml are found,
+        Then the reader assumes a format like
+        SR: [yield,CLs_obs,CLs_exp]
+        At the time of writing, this is used by the 2L search
         """
         
         self.__yieldfile = yieldfile
@@ -52,6 +57,7 @@ class DMSTAReader:
         self.__fileprefix = fileprefix
         self.__filesuffix = filesuffix
         self.__dslist = DSlist
+        self.__DSIDdict = {} # Formed from the DSlist in a bit
         
     def ReadFiles(self):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
@@ -59,6 +65,9 @@ class DMSTAReader:
 
         # This is what we want to return
         result = []
+
+        # First map model IDs to DSIDs
+        self.__ReadDSIDs()
 
         # Because the input is split between different formats,
         # I need to break the reading down into two steps.
@@ -68,9 +77,6 @@ class DMSTAReader:
         for analysis in self.analysisdict.keys():
             result = self.ReadCLValues(result, analysis)
 
-        # Keep warning/info messages from different sources separate
-        print
-            
         # Then add the yields
         result = self.ReadYields(result)
 
@@ -79,14 +85,16 @@ class DMSTAReader:
 
         return result
 
-    def ReadYields(self, data):
-        """Reads the model yields from the given ntuple file.
-        The data argument should be an already-populated list of SignalRegion instances.
+    def __ReadDSIDs(self):
+        """Map the model number to the ATLAS dataset ID.
+        The information from self.__dslist is stored in self.__DSIDdict
         """
-
+        
+        if not self.__dslist:
+            return
+            
         # First open the DSlist to find which models we need
         f = open(self.__dslist)
-        DSIDdict = {} # modelID : DSID for easy lookup later
         
         for line in f:
 
@@ -107,11 +115,24 @@ class DMSTAReader:
                 print splitline
                 raise # Because I want to see what this is and fix it
 
-            DSIDdict[modelID] = DSID
+            self.__DSIDdict[modelID] = DSID
 
         f.close()
+
+        return
+
+    def ReadYields(self, data):
+        """Reads the model yields from the given ntuple file.
+        The data argument should be an already-populated list of SignalRegion instances.
+        """
+
+        if not self.__yieldfile:
+            return data
             
-        # Now open up the ROOT ntuple and iterate over the entries
+        # Keep warning/info messages from different sources separate
+        print
+            
+        # Open up the ROOT ntuple with the yields and iterate over the entries
         # looking for relevant models
         yieldfile = ROOT.TFile.Open(self.__yieldfile)
 
@@ -140,7 +161,7 @@ class DMSTAReader:
             modelID = int(entry.modelName)
 
             try:
-                DSID = DSIDdict[modelID]
+                DSID = self.__DSIDdict[modelID]
             except KeyError:
                 continue # Not interested (yet)
 
@@ -148,9 +169,6 @@ class DMSTAReader:
             for datum in data:
 
                 analysisSR = datum.name
-
-                # Special case for 3L analysis SR0a
-                analysisSR = analysisSR.replace('BIN','_')
 
                 truthyield = getattr(entry, '_'.join(['EW_ExpectedEvents',datum.branchname]))
                 trutherror = getattr(entry, '_'.join(['EW_ExpectedError',datum.branchname]))
@@ -165,6 +183,7 @@ class DMSTAReader:
                         else:
                             datum.data[DSID][var] = getattr(entry, var)
                     filledYields += 1
+
                 except KeyError:
                     # FIXME: Should check if the model is in DSIDdict and the yield is high and print a warning if it's not in data
                     pass
@@ -177,14 +196,46 @@ class DMSTAReader:
         """
 
         # Find the input files
+        # Try the traditional pMSSM paper format first
         firstbit = self.__dirprefix+analysis+'/'+self.__fileprefix+analysis+'_'
         searchstring = firstbit+'*'+self.__filesuffix
         infiles = glob(searchstring)
 
-        print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
-        for fname in infiles:
+        if infiles:
+            
+            print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
+            for fname in infiles:
+                SRname = fname.replace(firstbit,'').replace(self.__filesuffix,'')
+                data = self.__ReadPmssmFiles(data, analysis, fname, SRname)
 
-            SRname = fname.replace(firstbit,'').replace(self.__filesuffix,'')
+        else:
+
+            # Oh dear, maybe these are YAML files
+            firstbit = self.__dirprefix+analysis
+            searchstring = '/'.join([firstbit,'*.yaml'])
+            infiles = glob(searchstring)
+
+            print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
+            for fname in infiles:
+                modelname = int(fname.split('/')[-1].split('.')[0])
+                DSID = self.__DSIDdict[modelname]
+                data = self.__ReadYamlFiles(data, analysis, fname, DSID)
+
+        return data
+
+    def __ReadYamlFiles(self, data, analysis, fname, modelname):
+
+        f = open(fname)
+
+        for line in f:
+
+            splitline = line.split()
+
+            # Skip empty lines
+            if not splitline: continue
+
+            # Apply some basic formatting to the SR name
+            SRname = splitline[0].rstrip(':').replace('-','_')
 
             analysisSR = '_'.join([analysis,SRname])
 
@@ -197,51 +248,112 @@ class DMSTAReader:
 
                 # Store the equivalent ntuple branch name for convenience later
                 obj.branchname = '_'.join([self.analysisdict[analysis],self.NtupleSRname(SRname,analysis)])
-            else:
-                print 'WARNING in Reader_DMSTA: already read-in file for %s'%(analysisSR)
+                
+                obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
+                obj.fitfunctions['CLs'].SetParameter(0,-10)
+                obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
+                obj.fitfunctions['CLs'].SetParameter(1,-5.)
+                obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+                obj.fitfunctions['CLs'].SetRange(0,0.8)
+
+            # The data is stored as a list, use ast to read it
+            import ast
+            numericdata = ast.literal_eval(''.join(splitline[1:]))
+
+            try:
+                CLs = float(numericdata[1])
+            except IndexError:
+                print 'WARNING: Incomplete data in %s, %s'%(fname,SRname)
+                print line
+                continue
+            except:
+                print 'WARNING: Invalid CLs value %s in %s, %s'%(numericdata[1],fname,SRname)
                 continue
 
-            f = open(fname)
-            for line in f:
+            try:
+                datum = obj.data[modelname]
+                print 'WARNING: Entry for model %i already exists for %s'%(modelname,analysisSR)
+            except KeyError:
+                datum = obj.AddData(modelname)
 
-                splitline = line.split()
-
-                # Skip comments and empty lines
-                if not splitline: continue
-                if splitline[0].startswith('#'): continue
-                try:
-                    modelpoint = int(splitline[0])
-                except ValueError:
-                    continue # Line of text
+            if CLs and CLs > 0:
+                datum['CLs'] = CLs
                 
-                try:
-                    # Find all the input data first
-                    CLb = float(splitline[1])
-                    CLsb = float(splitline[4])
-                except:
-                    print 'WARNING: Malformed line in %s: %s'%(fname,line)
-                    # Carry on, hopefully we can just analyse the other results
-                    continue
-
-                # Check that either CLsb or CLb were read OK
-                if CLb is None and CLsb is None: continue
-
-                if not CLb and CLb is not None:
-                    print 'WARNING: CLb is zero in %s, model %s'%(fname,modelpoint)
-                if not CLsb and CLsb is not None:
-                    print 'WARNING: CLsb is zero in %s, model %s'%(fname,modelpoint)
-
-                try:
-                    datum = obj.data[modelpoint]
-                    print 'WARNING: Entry for model %i already exists for %s'%(modelpoint,analysisSR)
-                except KeyError:
-                    datum = obj.AddData(modelpoint)
-
-                if CLb and CLsb:
-                    datum['CLs'] = CLsb/CLb
+        f.close() # Let's be tidy
 
         return data
 
+    def __ReadPmssmFiles(self, data, analysis, fname, SRname):
+
+        analysisSR = '_'.join([analysis,SRname])
+
+        # Try to find the existing data item
+        obj = next((x for x in data if x.name == analysisSR), None)
+        if obj is None:
+            # First time we've looked at this analysisSR
+            obj = SignalRegion(analysisSR, ['CLs'])
+            data.append(obj)
+
+            # Store the equivalent ntuple branch name for convenience later
+            obj.branchname = '_'.join([self.analysisdict[analysis],self.NtupleSRname(SRname,analysis)])
+        else:
+            print 'WARNING in Reader_DMSTA: already read-in file for %s'%(analysisSR)
+            return data
+
+        obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
+        obj.fitfunctions['CLs'].SetParameter(0,-0.1)
+        obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
+        obj.fitfunctions['CLs'].SetParameter(1,1.)
+        obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+        obj.fitfunctions['CLs'].SetRange(0,0.8)
+
+        # Special case(s)
+        if SRname in ['SR0aBIN01','SR0aBIN02','SR0aBIN03','SR0aBIN04']:
+            obj.fitfunctions['CLs'].SetRange(0,0.7)
+
+        f = open(fname)
+        for line in f:
+
+            splitline = line.split()
+
+            # Skip comments and empty lines
+            if not splitline: continue
+            if splitline[0].startswith('#'): continue
+            try:
+                modelpoint = int(splitline[0])
+            except ValueError:
+                continue # Line of text
+            
+            try:
+                # Find all the input data first
+                CLb = float(splitline[1])
+                CLsb = float(splitline[4])
+            except:
+                print 'WARNING: Malformed line in %s: %s'%(fname,line)
+                # Carry on, hopefully we can just analyse the other results
+                continue
+
+            # Check that either CLsb or CLb were read OK
+            if CLb is None and CLsb is None: continue
+
+            if not CLb and CLb is not None:
+                print 'WARNING: CLb is zero in %s, model %s'%(fname,modelpoint)
+            if not CLsb and CLsb is not None:
+                print 'WARNING: CLsb is zero in %s, model %s'%(fname,modelpoint)
+
+            try:
+                datum = obj.data[modelpoint]
+                print 'WARNING: Entry for model %i already exists for %s'%(modelpoint,analysisSR)
+            except KeyError:
+                datum = obj.AddData(modelpoint)
+
+            if CLb and CLsb:
+                datum['CLs'] = CLsb/CLb
+
+        f.close() # Let's be tidy
+        
+        return data
+    
     def NtupleSRname(self, SRname, analysis):
         """Convert the SR name used in the CL files to that used in the yield ntuple.
         """
