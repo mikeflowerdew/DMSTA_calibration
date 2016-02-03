@@ -90,7 +90,7 @@ class CorrelationPlotter:
                 for model,info in dataobj.data.iteritems():
 
                     # Add the new point
-                    if info[CLtype] is not None:
+                    if info[CLtype] is not None and info['yield']:
                         pointNumber = graph.GetN()
                         graph.SetPoint(pointNumber, info[CLtype], info['yield'])
 

@@ -195,6 +195,17 @@ class ProductCheck:
         graph_bbb = self.__CLsMatchPlot('bbbZ',twosmallest)
         self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
 
+        # Another experiment
+        def twotimestwosmallest(indict):
+            mylist = sorted(indict.values())[:2]
+            return len(mylist)*reduce(lambda x,y: x*y, mylist, 1)
+
+        # Create the output file and input data
+        fname = '/'.join([outdir,'twotimestwosmallest.pdf'])
+        graph_aaa = self.__CLsMatchPlot('aaaZ',twotimestwosmallest)
+        graph_bbb = self.__CLsMatchPlot('bbbZ',twotimestwosmallest)
+        self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
+
         # And another
         def smallest(indict):
             return min(indict.values()) if indict else 1.
