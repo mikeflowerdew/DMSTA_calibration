@@ -254,7 +254,7 @@ class CorrelationPlotter:
         # parameters = [fitresult.Value(i) for i in range(fitresult.NPar())]
         # errors = [fitresult.Error(i) for i in range(fitresult.NPar())]
         
-        return fitresult # Dunno if I need this or not
+        return fitresult
             
 def PassArguments():
 
