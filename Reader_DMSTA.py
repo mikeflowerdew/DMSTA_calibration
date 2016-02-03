@@ -281,7 +281,7 @@ class DMSTAReader:
         obj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)')
         obj.fitfunctions['CLs'].SetParameter(0,-0.1)
         obj.fitfunctions['CLs'].SetParLimits(0,-500,0)
-        obj.fitfunctions['CLs'].SetParameter(1,1.)
+        obj.fitfunctions['CLs'].SetParameter(1,-1.)
         obj.fitfunctions['CLs'].SetParLimits(1,-500,0)
         obj.fitfunctions['CLs'].SetRange(0,0.8)
 
