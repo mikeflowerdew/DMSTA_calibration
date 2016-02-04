@@ -215,7 +215,7 @@ class DMSTAReader:
             # Apply some basic formatting to the SR name
             SRname = self.NtupleSRname(splitline[0].rstrip(':').replace('-','_'),analysis)
 
-            analysisSR = '_'.join([analysis,SRname])
+            analysisSR = '_'.join([self.analysisdict[analysis],SRname])
 
             # Try to find the existing data item
             obj = next((x for x in data if x.name == analysisSR), None)
@@ -258,7 +258,7 @@ class DMSTAReader:
 
     def __ReadPmssmFiles(self, data, analysis, fname, SRname):
 
-        analysisSR = '_'.join([analysis,SRname])
+        analysisSR = '_'.join([self.analysisdict[analysis],SRname])
 
         # Try to find the existing data item
         obj = next((x for x in data if x.name == analysisSR), None)
@@ -349,7 +349,7 @@ class DMSTAReader:
     
             # Compare the error of the log coefficient to its value
             logcoeff = valueWithError(fitfunc.GetParameter(1),fitfunc.GetParError(1))
-            if abs(logcoeff.error) > abs(logcoeff.value):
+            if abs(logcoeff.error) > 0.5*abs(logcoeff.value):
                 return False
 
             print 'Success!'
@@ -361,6 +361,7 @@ class DMSTAReader:
         SRobj.fitfunctions['CLs'].SetParLimits(0,-500,0)
         SRobj.fitfunctions['CLs'].SetParameter(1,-10.)
         SRobj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+        SRobj.fitfunctions['CLs'].SetParLimits(2,0,500)
         SRobj.fitfunctions['CLs'].SetRange(0,0.8)
         SRobj.GoodFit = GoodFit
 
