@@ -184,6 +184,7 @@ class CorrelationPlotter:
             graph.Draw('ap')
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
+            ROOT.ATLASLabel(0.6,0.9,"Internal")
 
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf(']))
 
@@ -246,14 +247,17 @@ class CorrelationPlotter:
 
         chi2plot.SetMinimum(0)
         chi2plot.Draw()
+        ROOT.ATLASLabel(0.5,0.85,"Internal")
         self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
 
         probplot.SetMinimum(0)
         probplot.Draw()
+        ROOT.ATLASLabel(0.5,0.85,"Internal")
         self.__canvas.Print('/'.join([outdir,'prob.pdf']))
 
         for iplot in range(len(paramplots)):
             paramplots[iplot].Draw()
+            ROOT.ATLASLabel(0.2,0.95,"Internal")
             self.__canvas.SetLogy()
             self.__canvas.Print('/'.join([outdir,'param%i.pdf'%(iplot)]))
 
@@ -333,6 +337,7 @@ if __name__ == '__main__':
     ROOT.gROOT.LoadMacro("AtlasStyle.C")
     ROOT.SetAtlasStyle()
     ROOT.gROOT.LoadMacro("AtlasUtils.C") 
+    ROOT.gROOT.LoadMacro("AtlasLabels.C") 
 
     plotdir = 'plots'
     

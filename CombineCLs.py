@@ -175,19 +175,29 @@ class Combiner:
         CLsplot = infile.Get('CLsplot')
         CLsplot_valid = infile.Get('CLsplot_valid')
         
-        CLsplot.Draw()
-        CLsplot_valid.SetLineColor(ROOT.kBlue)
-        CLsplot_valid.Draw('same')
+        CLsplot_valid.SetFillColor(ROOT.kBlue)
+        CLsplot_valid.SetLineWidth(0)
+        CLsplot_valid.Draw()
+        CLsplot.Draw('same')
+        
+        ROOT.ATLASLabel(0.3,0.85,"Internal")
+        ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
+        ROOT.myBoxText(0.3,0.75,0.02,CLsplot_valid.GetFillColor(),'Non-extrapolated models')
 
         canvas.Print('/'.join([dirname,'CLsplot.pdf']))
         
         LogCLsplot = infile.Get('LogCLsplot')
         LogCLsplot_valid = infile.Get('LogCLsplot_valid')
         
-        LogCLsplot.Draw()
-        LogCLsplot_valid.SetLineColor(ROOT.kBlue)
-        LogCLsplot_valid.Draw('same')
+        LogCLsplot_valid.SetFillColor(ROOT.kBlue)
+        LogCLsplot_valid.SetLineWidth(0)
+        LogCLsplot_valid.Draw()
+        LogCLsplot.Draw('same')
         
+        ROOT.ATLASLabel(0.3,0.85,"Internal")
+        ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
+        ROOT.myBoxText(0.3,0.75,0.02,CLsplot_valid.GetFillColor(),'Non-extrapolated models')
+
         canvas.SetLogy()
         canvas.Print('/'.join([dirname,'LogCLsplot.pdf']))
         canvas.SetLogy(0)
@@ -199,6 +209,7 @@ if __name__ == '__main__':
     ROOT.gROOT.LoadMacro("AtlasStyle.C")
     ROOT.SetAtlasStyle()
     ROOT.gROOT.LoadMacro("AtlasUtils.C") 
+    ROOT.gROOT.LoadMacro("AtlasLabels.C") 
 
     obj = Combiner('Data_Yields/SummaryNtuple_STA_nosim.root',
                    'plots/calibration.root')
