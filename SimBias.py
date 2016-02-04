@@ -67,7 +67,7 @@ def drawHistos(hname1,hname2,title,pdfname,hname3=''):
     ROOT.myText(0.2, 0.95, ROOT.kBlack, title)
     canvas.Print(pdfname)
 
-    return True
+    return [hist1,hist2,hist3] if hist3 else [hist1,hist2]
 
 # Import & set up ATLAS style
 import ROOT
@@ -92,6 +92,9 @@ passdistrk = '||'.join(['EW_ExpectedEvents_DisappearingTrack_SR%i > %.1f'%(SR,ob
 pdfname = 'Data_Yields/SimSkim.pdf'
 canvas = ROOT.TCanvas('can','can',800,600)
 canvas.Print(pdfname+'[')
+
+# Some way to store the output
+histolist = []
 
 # Loop over all branches
 branchlist = simtree.GetListOfBranches()
@@ -121,11 +124,17 @@ for branchname in branchlist:
     nosimtree.Draw(branchname+'>>hdistrk'+branchname+binstr,
                    passdistrk)
 
-    drawHistos('hnosim'+branchname,'hsim'+branchname,
-               branchname, pdfname, 'hdistrk'+branchname)
+    histolist.extend(drawHistos('hnosim'+branchname,'hsim'+branchname,
+                                branchname, pdfname, 'hdistrk'+branchname))
 
 # Close the pdf file
 canvas.Print(pdfname+']')
+
+# Save the plots!
+outfile = ROOT.TFile.Open('Data_Yields/histograms.root','RECREATE')
+for h in histolist:
+    h.Write()
+outfile.Close()
 
 # I need more info about the disappearing track analysis
 
