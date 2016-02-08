@@ -81,7 +81,7 @@ class CorrelationPlotter:
                         # because the underlying histogram axes have not yet been made.
                         # So I'll augment the python object to store the information for later.
                         try:
-                            graph.ytitle = dataobj.CLnames[CLtype]
+                            graph.xtitle = dataobj.CLnames[CLtype]
                         except KeyError:
                             print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
                             graph.ytitle = 'CL'
@@ -96,10 +96,10 @@ class CorrelationPlotter:
                                 # Check that variable and graph correspond
                                 if var in graph.GetName(): 
                                     pointNumber = graph.GetN()
-                                    graph.SetPoint(pointNumber, info['yield'].value, info[CLtype], info[var])
+                                    graph.SetPoint(pointNumber, info[CLtype], info['yield'].value, info[var])
                                     # Check to see if we have an error on the yield
                                     try:
-                                        graph.SetPointError(pointNumber, info['yield'].error, 0, 0)
+                                        graph.SetPointError(pointNumber, 0, info['yield'].error, 0)
                                     except AttributeError:
                                         # Absolutely OK, we just don't have errors
                                         pass
@@ -138,9 +138,9 @@ class CorrelationPlotter:
             graph.SetMarkerSize(2)
             graph.SetMarkerStyle(ROOT.kFullCircle)
             graph.Draw('pcolz err')
-            graph.GetXaxis().SetTitle('Yield')
+            graph.GetYaxis().SetTitle('Yield')
             try:
-                graph.GetYaxis().SetTitle(graph.ytitle) # Using the augmentation provided in self.MakeCorrelations()
+                graph.GetXaxis().SetTitle(graph.xtitle) # Using the augmentation provided in self.MakeCorrelations()
             except AttributeError:
                 # Should not happen, this is just in case
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
@@ -148,6 +148,7 @@ class CorrelationPlotter:
             graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
                 
             graph.Draw('pcolz err')
+            graph.GetYaxis().SetTitleOffset(1.6)
             graph.GetZaxis().SetLabelOffset(-0.1)
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
