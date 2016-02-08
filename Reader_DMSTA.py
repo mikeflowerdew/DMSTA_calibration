@@ -183,7 +183,7 @@ class DMSTAReader:
             
             print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
             for fname in infiles:
-                SRname = fname.replace(firstbit,'').replace(self.__filesuffix,'')
+                SRname = self.NtupleSRname(fname.replace(firstbit,'').replace(self.__filesuffix,''), analysis)
                 data = self.__ReadPmssmFiles(data, analysis, fname, SRname)
 
         else:
@@ -201,23 +201,6 @@ class DMSTAReader:
 
         return data
 
-    def __SetupFitFunc(self, SRobj):
-        """Sets up fitting function, to avoid duplication in the
-        YAML and pMSSM file-reading methods.
-        Could be extended to SR-specific configs using SRobj.name
-        """
-
-        SRobj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)++1')
-        SRobj.fitfunctions['CLs'].SetParameter(0,-10.)
-        SRobj.fitfunctions['CLs'].SetParLimits(0,-500,0)
-        SRobj.fitfunctions['CLs'].SetParameter(1,-10.)
-        SRobj.fitfunctions['CLs'].SetParLimits(1,-500,0)
-        SRobj.fitfunctions['CLs'].SetRange(0,0.8)
-
-        # Special case(s)
-        if SRobj.name in ['3L_SR0aBIN01','3L_SR0aBIN02','3L_SR0aBIN03','3L_SR0aBIN04']:
-            SRobj.fitfunctions['CLs'].SetRange(0,0.7)
-
     def __ReadYamlFiles(self, data, analysis, fname, modelname):
 
         f = open(fname)
@@ -230,9 +213,9 @@ class DMSTAReader:
             if not splitline: continue
 
             # Apply some basic formatting to the SR name
-            SRname = splitline[0].rstrip(':').replace('-','_')
+            SRname = self.NtupleSRname(splitline[0].rstrip(':').replace('-','_'),analysis)
 
-            analysisSR = '_'.join([analysis,SRname])
+            analysisSR = '_'.join([self.analysisdict[analysis],SRname])
 
             # Try to find the existing data item
             obj = next((x for x in data if x.name == analysisSR), None)
@@ -275,7 +258,7 @@ class DMSTAReader:
 
     def __ReadPmssmFiles(self, data, analysis, fname, SRname):
 
-        analysisSR = '_'.join([analysis,SRname])
+        analysisSR = '_'.join([self.analysisdict[analysis],SRname])
 
         # Try to find the existing data item
         obj = next((x for x in data if x.name == analysisSR), None)
@@ -350,3 +333,39 @@ class DMSTAReader:
 
         return SRname
     
+    def __SetupFitFunc(self, SRobj):
+        """Sets up fitting function, to avoid duplication in the
+        YAML and pMSSM file-reading methods.
+        Could be extended to SR-specific configs using SRobj.name
+        """
+
+        def GoodFit(graph):
+            """Tells the upstream code if a fit is good or bad, potentially
+            in an SR-dependent way."""
+
+            print 'MJF: checking fit for',graph.GetName()
+    
+            fitfunc = graph.GetFunction('fitfunc')
+    
+            # Compare the error of the log coefficient to its value
+            logcoeff = valueWithError(fitfunc.GetParameter(1),fitfunc.GetParError(1))
+            if abs(logcoeff.error) > 0.5*abs(logcoeff.value):
+                return False
+
+            print 'Success!'
+            # Leave space for additional criteria if I need them
+            return True
+    
+        SRobj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)++1')
+        SRobj.fitfunctions['CLs'].SetParameter(0,-10.)
+        SRobj.fitfunctions['CLs'].SetParLimits(0,-500,0)
+        SRobj.fitfunctions['CLs'].SetParameter(1,-10.)
+        SRobj.fitfunctions['CLs'].SetParLimits(1,-500,0)
+        SRobj.fitfunctions['CLs'].SetParLimits(2,0,500)
+        SRobj.fitfunctions['CLs'].SetRange(0,0.8)
+        SRobj.GoodFit = GoodFit
+
+        # Special case(s)
+        if SRobj.name in ['3L_SR0aBIN01','3L_SR0aBIN02','3L_SR0aBIN03','3L_SR0aBIN04']:
+            SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+

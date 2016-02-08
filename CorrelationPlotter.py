@@ -108,18 +108,50 @@ class CorrelationPlotter:
                         print 'WARNING: Graph %s has already been fitted'%(graphkey)
                     # Overwrite previous fit result, if any
                     self.__fitresults[graphkey] = self.FitGraph(graph, dataobj.fitfunctions[CLtype])
+
+                    # Cache for later if this is a good fit or not
+                    graph.goodfit = (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
                     
-    def SaveData(self, fname):
-        """Saves the graphs in a TFile"""
+    def SaveData(self, dirname):
+        """Saves the graphs in a TFile called results.root,
+        and a separate summary of the good fit results in calibration.root"""
 
         if self.__correlations is None:
             print 'ERROR: Cannot save graph output, as it has not been created yet!'
             return
 
-        outfile = ROOT.TFile.Open(fname,'RECREATE')
+        outfile = ROOT.TFile.Open('/'.join([dirname,'results.root']),'RECREATE')
 
-        for analysisSR in self.__correlations.keys():
+        for analysisSR in sorted(self.__correlations.keys()):
             self.__correlations[analysisSR].Write()
+
+        outfile.Close()
+
+        outfile = ROOT.TFile.Open('/'.join([dirname,'calibration.root']),'RECREATE')
+
+        for analysisSR in sorted(self.__correlations.keys()):
+
+            graph = self.__correlations[analysisSR]
+
+            # Use the result we cached in MakeCorrelations to decide if we store this one
+            if not graph.goodfit:
+                continue
+            
+            funclist = graph.GetListOfFunctions()
+            if len(funclist) != 1:
+                print 'WARNING in SaveData: %i fit functions found for %s'%(len(funclist),analysiSR)
+            if not funclist:
+                continue
+
+            # Regardless, just write out one function (should be good enough)
+            func = funclist[0]
+            func.SetName(analysisSR)
+            
+            # Set the function minimum to the first observed point
+            xmin = min([graph.GetX()[i] for i in range(graph.GetN())])
+            func.SetRange(xmin,func.GetXmax())
+            
+            func.Write()
 
         outfile.Close()
 
@@ -152,6 +184,7 @@ class CorrelationPlotter:
             graph.Draw('ap')
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
+            ROOT.ATLASLabel(0.6,0.9,"Internal")
 
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf(']))
 
@@ -214,14 +247,17 @@ class CorrelationPlotter:
 
         chi2plot.SetMinimum(0)
         chi2plot.Draw()
+        ROOT.ATLASLabel(0.5,0.85,"Internal")
         self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
 
         probplot.SetMinimum(0)
         probplot.Draw()
+        ROOT.ATLASLabel(0.5,0.85,"Internal")
         self.__canvas.Print('/'.join([outdir,'prob.pdf']))
 
         for iplot in range(len(paramplots)):
             paramplots[iplot].Draw()
+            ROOT.ATLASLabel(0.2,0.95,"Internal")
             self.__canvas.SetLogy()
             self.__canvas.Print('/'.join([outdir,'param%i.pdf'%(iplot)]))
 
@@ -301,6 +337,7 @@ if __name__ == '__main__':
     ROOT.gROOT.LoadMacro("AtlasStyle.C")
     ROOT.SetAtlasStyle()
     ROOT.gROOT.LoadMacro("AtlasUtils.C") 
+    ROOT.gROOT.LoadMacro("AtlasLabels.C") 
 
     plotdir = 'plots'
     
@@ -351,6 +388,6 @@ if __name__ == '__main__':
         plotter = CorrelationPlotter(data)
         plotter.MakeCorrelations()
         plotter.PlotData(plotdir)
-        plotter.SaveData('/'.join([plotdir,'results.root']))
+        plotter.SaveData(plotdir)
 
     

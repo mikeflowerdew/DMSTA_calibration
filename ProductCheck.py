@@ -222,9 +222,12 @@ class ProductCheck:
         canvas.Print(fname+'[')
     
         # plot the plots
-        graph_aaa.SetMarkerSize(0.4)
+        graph_aaa.SetMarkerSize(0.8)
         graph_aaa.Draw('ap')
-        ROOT.myText(0.2, 0.95, ROOT.kBlack, 'aaaZ combination')
+        graph_aaa.GetXaxis().SetTitle('Number of active SRs')
+        graph_aaa.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
+        ROOT.myText(0.2, 0.96, ROOT.kBlack, 'aaaZ combination')
+        ROOT.ATLASLabel(0.6,0.9,"Internal")
         canvas.Print(fname)
     
         # Plot the 1D projections
@@ -236,19 +239,24 @@ class ProductCheck:
             # Make some space for the legend
             if h.GetMaximum() < 10:
                 h.SetMaximum(1.5*h.GetMaximum())
+            h.GetXaxis().SetTitle('Estimated CLs / Combined CLs')
             h.Draw()
-            ROOT.myText(0.2, 0.95, ROOT.kBlack, 'aaaZ %i SRs'%(i+1))
+            ROOT.myText(0.2, 0.96, ROOT.kBlack, 'aaaZ: %i active SRs'%(i+1))
             ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
             ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
-            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
+            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i models'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
+            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i models'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
+            ROOT.ATLASLabel(0.6,0.9,"Internal")
         canvas.Print(fname)
         canvas.Clear()
 
         # plot the plots
-        graph_bbb.SetMarkerSize(0.4)
+        graph_bbb.SetMarkerSize(0.8)
         graph_bbb.Draw('ap')
-        ROOT.myText(0.2, 0.95, ROOT.kBlack, 'bbbZ combination')
+        graph_aaa.GetXaxis().SetTitle('Number of active SRs')
+        graph_aaa.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
+        ROOT.myText(0.2, 0.96, ROOT.kBlack, 'bbbZ combination')
+        ROOT.ATLASLabel(0.6,0.9,"Internal")
         canvas.Print(fname)
     
         # Plot the 1D projections
@@ -260,12 +268,14 @@ class ProductCheck:
             # Make some space for the legend
             if h.GetMaximum() < 10:
                 h.SetMaximum(1.5*h.GetMaximum())
+            h.GetXaxis().SetTitle('Estimated CLs / Combined CLs')
             h.Draw()
-            ROOT.myText(0.2, 0.95, ROOT.kBlack, 'bbbZ %i SRs'%(i+1))
+            ROOT.myText(0.2, 0.96, ROOT.kBlack, 'bbbZ: %i active SRs'%(i+1))
             ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
             ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
-            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
+            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i models'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
+            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i models'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
+            ROOT.ATLASLabel(0.6,0.9,"Internal")
         canvas.Print(fname)
         canvas.Clear()
     
