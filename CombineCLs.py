@@ -211,7 +211,7 @@ if __name__ == '__main__':
     ROOT.gROOT.LoadMacro("AtlasUtils.C") 
     ROOT.gROOT.LoadMacro("AtlasLabels.C") 
 
-    obj = Combiner('Data_Yields/SummaryNtuple_STA_nosim.root',
+    obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
                    'plots/calibration.root')
     # obj.ReadNtuple('results')
     obj.PlotSummary('results')

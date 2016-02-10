@@ -23,6 +23,7 @@ intree.SetBranchStatus('BF_chi_*', 1)
 intree.SetBranchStatus('Cross_section_nn*', 1)
 intree.SetBranchStatus('cos_tau', 1)
 intree.SetBranchStatus('m_chi_*', 1)
+intree.SetBranchStatus('LLV_*', 1)
 intree.SetBranchStatus('mu', 1)
 intree.SetBranchStatus('tanb', 1)
 
@@ -33,8 +34,13 @@ outfile_sim = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_sim.root', 'RECREAT
 outtree_sim = intree.CloneTree(0)
 # outtree_sim.CopyEntries(intree) # This copies every event
 
-outfile_nosim = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_nosim.root', 'RECREATE')
-outtree_nosim = intree.CloneTree(0)
+outfile_evgen = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_evgen.root', 'RECREATE')
+outtree_evgen = intree.CloneTree(0)
+
+# A third copy, for all the models without truth acceptance
+# Mainly for validation (ie that I don't skip one by mistake)
+outfile_noevgen = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_noevgen.root', 'RECREATE')
+outtree_noevgen = intree.CloneTree(0)
 
 # First-level optimisation: write output only for simulated samples
 f = open('Data_Yields/D3PDs.txt')
@@ -62,16 +68,22 @@ for line in f:
 print 'Looping over',intree.GetEntries(),'entries'
 nwritten = 0
 for entry in intree:
-    
+
     modelName = entry.modelName
     if modelName % 1000 == 0:
         print 'On model %6i, written %3i so far'%(modelName,nwritten)
-        
-    if modelName in modellist:
-        outtree_sim.Fill()
-        nwritten += 1
+
+    # Check if the truth analysis actually ran
+    HaveTruthAcc = entry.EW_ExpectedEvents_EwkTwoLepton_SR_Zjets != -1
+
+    if HaveTruthAcc:
+        # Write all events to "evgen" tree for easier processing later
+        outtree_evgen.Fill()
+        if modelName in modellist:
+            outtree_sim.Fill()
+            nwritten += 1
     else:
-        outtree_nosim.Fill()
+        outtree_noevgen.Fill()
 
     # if nwritten == 5: break # Just for testing
 
@@ -82,9 +94,13 @@ outfile_sim.cd()
 outtree_sim.Write()
 outfile_sim.Close()
 
-outfile_nosim.cd()
-outtree_nosim.Write()
-outfile_nosim.Close()
+outfile_evgen.cd()
+outtree_evgen.Write()
+outfile_evgen.Close()
+
+outfile_noevgen.cd()
+outtree_noevgen.Write()
+outfile_noevgen.Close()
 
 infile.Close()
 

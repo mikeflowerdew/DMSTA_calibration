@@ -80,8 +80,8 @@ ROOT.gROOT.LoadMacro("AtlasUtils.C")
 simfile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_sim.root')
 simtree = simfile.Get('susy')
 
-nosimfile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_nosim.root')
-nosimtree = nosimfile.Get('susy')
+evgenfile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_evgen.root')
+evgentree = evgenfile.Get('susy')
 
 # Observed xsec limits from the paper, converted to events
 # Note that there is no SR0
@@ -119,12 +119,12 @@ for branchname in branchlist:
         binstr = ''
 
     # Draw the two histograms, making sure they have the same binning
-    nosimtree.Draw(branchname+'>>hnosim'+branchname+binstr)
+    evgentree.Draw(branchname+'>>hevgen'+branchname+binstr)
     simtree.Draw(branchname+'>>hsim'+branchname+binstr)
-    nosimtree.Draw(branchname+'>>hdistrk'+branchname+binstr,
+    evgentree.Draw(branchname+'>>hdistrk'+branchname+binstr,
                    passdistrk)
 
-    histolist.extend(drawHistos('hnosim'+branchname,'hsim'+branchname,
+    histolist.extend(drawHistos('hevgen'+branchname,'hsim'+branchname,
                                 branchname, pdfname, 'hdistrk'+branchname))
 
 # Close the pdf file
@@ -138,19 +138,19 @@ outfile.Close()
 
 # I need more info about the disappearing track analysis
 
-nosimentries = nosimtree.GetEntries()
+evgenentries = evgentree.GetEntries()
 for SR in range(1,5):
     passlimit = 'EW_ExpectedEvents_DisappearingTrack_SR%i > %.1f'%(SR,obslimits[SR])
     ewkexclude = '(EW_Cat_EwkTwoLepton > 1 || EW_Cat_EwkThreeLepton > 1 || EW_Cat_EwkFourLepton > 1 || EW_Cat_EwkTwoTau > 1)'
-    nosimmodels = nosimtree.GetEntries(passlimit)
-    nosimmodels_excluded = nosimtree.GetEntries(passlimit+'&&'+ewkexclude)
+    evgenmodels = evgentree.GetEntries(passlimit)
+    evgenmodels_excluded = evgentree.GetEntries(passlimit+'&&'+ewkexclude)
     print
     print 'Studying DisTrk SR%i'%(SR)
-    print '%i of %i non-simulated models above limit'%(nosimmodels,nosimentries)
-    print 'Of these, %i might be excluded by EWK searches'%(nosimmodels_excluded)
+    print '%i of %i non-simulated models above limit'%(evgenmodels,evgenentries)
+    print 'Of these, %i might be excluded by EWK searches'%(evgenmodels_excluded)
 
 print
-print 'A total of %i models are excluded by the DisTrk analysis'%(nosimtree.GetEntries(passdistrk))
+print 'A total of %i models are excluded by the DisTrk analysis'%(evgentree.GetEntries(passdistrk))
 
 simfile.Close()
-nosimfile.Close()
+evgenfile.Close()
