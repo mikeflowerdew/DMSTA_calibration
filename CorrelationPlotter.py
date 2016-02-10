@@ -373,7 +373,8 @@ if __name__ == '__main__':
         # Special run mode: a specific study
         from ProductCheck import ProductCheck
         checker = ProductCheck()
-        checker.RunAnalysis()
+        checker.RunAnalysis('4L')
+        checker.RunAnalysis('3L')
 
     else:
         

@@ -31,14 +31,14 @@ class ProductCheck:
         """Placeholder, in case I need it later"""
         pass
 
-    def RunAnalysis(self):
+    def RunAnalysis(self, analysis):
 
-        self.__ReadData()
-        self.__DebugPrintout()
+        self.__ReadData(analysis)
+        self.__DebugPrintout(analysis)
 
-        self.__MainAnalysis()
+        self.__MainAnalysis(analysis)
 
-    def __ReadData(self):
+    def __ReadData(self, analysis):
         """Read in all the relevant data and sort it.
         The combined CLs values are read in, together with the CLs
         values for each individual signal region.
@@ -52,23 +52,23 @@ class ProductCheck:
 
         from Reader_DMSTA import DMSTAReader
 
-        # Analyse just the 4L data
+        # Analyse the data
         perSRreader = DMSTAReader()
         perSRreader.analysisdict = {
-            '4L': DMSTAReader.analysisdict['4L'],
+            analysis: DMSTAReader.analysisdict[analysis],
             }
         self.__perSRdata = perSRreader.ReadFiles()
         # Cache the order of the SRs
         self.__SRorder = [thing.name for thing in self.__perSRdata]
 
-        # Read the combined 4L data
+        # Read the combined data
         # There's no point in reading the yields!
         combinationReader = DMSTAReader(
             yieldfile = None,
             DSlist = None,
             )
         combinationReader.analysisdict = {
-            '4L_combination': DMSTAReader.analysisdict['4L'],
+            analysis+'_combination': DMSTAReader.analysisdict[analysis],
             }
         self.__combinationData = combinationReader.ReadFiles()
         # Cache the order of the combinations
@@ -81,15 +81,30 @@ class ProductCheck:
             SRindices = []
             if 'aaa' in CombData.name:
                 name = 'aaaZ'
-                allowedSRs = ['SR0noZa','SR0Z','SR1noZa','SR1Z','SR2noZa','SR2Z']
-                SRindices = [idx for idx,SR in enumerate(self.__SRorder) if 'noZb' not in SR]
+                allowedSRs = ['EwkFourLepton_SR0noZa',
+                              'EwkFourLepton_SR0Z',
+                              'EwkFourLepton_SR1noZa',
+                              'EwkFourLepton_SR1Z',
+                              'EwkFourLepton_SR2noZa',
+                              'EwkFourLepton_SR2Z']
             elif 'bbb' in CombData.name:
                 name = 'bbbZ'
-                allowedSRs = ['SR0noZb','SR0Z','SR1noZb','SR1Z','SR2noZb','SR2Z']
-                SRindices = [idx for idx,SR in enumerate(self.__SRorder) if 'noZa' not in SR]
+                allowedSRs = ['EwkFourLepton_SR0noZb',
+                              'EwkFourLepton_SR0Z',
+                              'EwkFourLepton_SR1noZb',
+                              'EwkFourLepton_SR1Z',
+                              'EwkFourLepton_SR2noZb',
+                              'EwkFourLepton_SR2Z']
+            elif '3L' in CombData.name:
+                name = '3L'
+                allowedSRs = ['EwkThreeLepton_3L_SR0a_%i'%i for i in range(1,21)]
+                # allowedSRs.append('SR0b') # Not sure if this is in or not?
             else:
                 print 'ERROR in ProductCheck: Unknown combination',CombData.name
                 continue
+
+            # Cache the indices for use in a moment
+            SRindices = [idx for idx,SR in enumerate(self.__SRorder) if SR in allowedSRs]
 
             data = []
             
@@ -113,12 +128,12 @@ class ProductCheck:
             
         return
 
-    def __DebugPrintout(self):
+    def __DebugPrintout(self, analysis):
 
         print self.__SRorder
         print self.__combinationData[0].name
 
-        for info in self.__CLsCorrelation['aaaZ'][:10]:
+        for info in self.__CLsCorrelation.values()[0][:10]:
 
             print info.CombCLs,info.ProductCLs,info.SRCLs
             print info.ProductCLs/info.CombCLs if info.CombCLs else 0.0
@@ -154,20 +169,26 @@ class ProductCheck:
         """Turns a TGraph returned by self.__CLsMatchPlot into 6 histograms
         corresponding to the slices in the number of SRs."""
 
-        result = [ROOT.TH1D(graph.GetName()+'_%i'%(i),'',200,0,2.0) for i in range(1,7)]
+        # The x-axis min/max values should be integers,
+        # although it seems they go from 0.5 to NSRs+0.5?
+        # Just add a little protection about float rounding errors
+        minimum = int(graph.GetXaxis().GetXmin() + 1.005)
+        maximum = int(graph.GetXaxis().GetXmax() + 1.005)
+
+        result = [ROOT.TH1D(graph.GetName()+'_%i'%(i),'',200,0,2.0) for i in range(minimum,maximum)]
 
         for ipoint in range(graph.GetN()):
 
-            NSRs = int(1.01*graph.GetX()[ipoint]) # Add 1% to avoid floating point errors
+            NSRs = int(graph.GetX()[ipoint] + 0.005) # Add 0.005 to avoid floating point errors
             CLsRatio = graph.GetY()[ipoint]
 
-            result[NSRs-1].Fill(CLsRatio)
+            result[NSRs-minimum].Fill(CLsRatio)
 
         return result
 
-    def __MainAnalysis(self):
+    def __MainAnalysis(self, analysis):
 
-        outdir = 'productcheck'
+        outdir = 'productcheck/'+analysis
         
         import os
         if not os.path.exists(outdir):
@@ -180,9 +201,8 @@ class ProductCheck:
             
             # Create the output file and input data
             fname = '/'.join([outdir,'threshold_%i.pdf'%(threshold)])
-            graph_aaa = self.__CLsMatchPlot('aaaZ',threshold/100.)
-            graph_bbb = self.__CLsMatchPlot('bbbZ',threshold/100.)
-            self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
+            graphs = [self.__CLsMatchPlot(name,threshold/100.) for name in sorted(self.__CLsCorrelation.keys())]
+            self.__PlotGraph(can, graphs, fname)
 
         # Try an experimental function
         def twosmallest(indict):
@@ -191,9 +211,8 @@ class ProductCheck:
 
         # Create the output file and input data
         fname = '/'.join([outdir,'twosmallest.pdf'])
-        graph_aaa = self.__CLsMatchPlot('aaaZ',twosmallest)
-        graph_bbb = self.__CLsMatchPlot('bbbZ',twosmallest)
-        self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
+        graphs = [self.__CLsMatchPlot(name,twosmallest) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
 
         # Another experiment
         def twotimestwosmallest(indict):
@@ -202,9 +221,8 @@ class ProductCheck:
 
         # Create the output file and input data
         fname = '/'.join([outdir,'twotimestwosmallest.pdf'])
-        graph_aaa = self.__CLsMatchPlot('aaaZ',twotimestwosmallest)
-        graph_bbb = self.__CLsMatchPlot('bbbZ',twotimestwosmallest)
-        self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
+        graphs = [self.__CLsMatchPlot(name,twotimestwosmallest) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
 
         # And another
         def smallest(indict):
@@ -212,72 +230,55 @@ class ProductCheck:
 
         # Create the output file and input data
         fname = '/'.join([outdir,'smallest.pdf'])
-        graph_aaa = self.__CLsMatchPlot('aaaZ',smallest)
-        graph_bbb = self.__CLsMatchPlot('bbbZ',smallest)
-        self.__PlotGraph(can, graph_aaa, graph_bbb, fname)
+        graphs = [self.__CLsMatchPlot(name,smallest) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
 
-    def __PlotGraph(self, canvas, graph_aaa, graph_bbb, fname):
+    def __PlotGraph(self, canvas, graphs, fname):
         """Plot two graphs, together with their 1D projections"""
+
+        if not graphs: return
         
         canvas.Print(fname+'[')
-    
-        # plot the plots
-        graph_aaa.SetMarkerSize(0.8)
-        graph_aaa.Draw('ap')
-        graph_aaa.GetXaxis().SetTitle('Number of active SRs')
-        graph_aaa.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
-        ROOT.myText(0.2, 0.96, ROOT.kBlack, 'aaaZ combination')
-        ROOT.ATLASLabel(0.6,0.9,"Internal")
-        canvas.Print(fname)
-    
-        # Plot the 1D projections
-        histograms_aaa = self.__1Dprojections(graph_aaa)
-        canvas.Clear()
-        canvas.Divide(3,2)
-        for i,h in enumerate(histograms_aaa):
-            canvas.cd(i+1)
-            # Make some space for the legend
-            if h.GetMaximum() < 10:
-                h.SetMaximum(1.5*h.GetMaximum())
-            h.GetXaxis().SetTitle('Estimated CLs / Combined CLs')
-            h.Draw()
-            ROOT.myText(0.2, 0.96, ROOT.kBlack, 'aaaZ: %i active SRs'%(i+1))
-            ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
-            ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i models'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
-            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i models'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
-            ROOT.ATLASLabel(0.6,0.9,"Internal")
-        canvas.Print(fname)
-        canvas.Clear()
 
-        # plot the plots
-        graph_bbb.SetMarkerSize(0.8)
-        graph_bbb.Draw('ap')
-        graph_aaa.GetXaxis().SetTitle('Number of active SRs')
-        graph_aaa.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
-        ROOT.myText(0.2, 0.96, ROOT.kBlack, 'bbbZ combination')
-        ROOT.ATLASLabel(0.6,0.9,"Internal")
-        canvas.Print(fname)
-    
-        # Plot the 1D projections
-        histograms_bbb = self.__1Dprojections(graph_bbb)
-        canvas.Clear()
-        canvas.Divide(3,2)
-        for i,h in enumerate(histograms_bbb):
-            canvas.cd(i+1)
-            # Make some space for the legend
-            if h.GetMaximum() < 10:
-                h.SetMaximum(1.5*h.GetMaximum())
-            h.GetXaxis().SetTitle('Estimated CLs / Combined CLs')
-            h.Draw()
-            ROOT.myText(0.2, 0.96, ROOT.kBlack, 'bbbZ: %i active SRs'%(i+1))
-            ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
-            ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
-            ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i models'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
-            ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i models'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
-            ROOT.ATLASLabel(0.6,0.9,"Internal")
-        canvas.Print(fname)
-        canvas.Clear()
-    
+        for graph in graphs:
+
+            # Ugh, a bit nasty but should be safe
+            label = graph.GetName().split('_')[1]
+
+            # plot the plots
+            graph.SetMarkerSize(0.8)
+            graph.Draw('ap')
+            graph.GetXaxis().SetTitle('Number of active SRs')
+            graph.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
+            ROOT.myText(0.2, 0.96, ROOT.kBlack, label+' combination')
+            ROOT.ATLASLabel(0.6,0.9,'Internal')
+            canvas.Print(fname)
+
+            # Plot the 1D projections
+            histograms = self.__1Dprojections(graph)
+            canvas.Clear()
+            canvas.Divide(3,2) # Nicely fits on one page
+            # Round up the number of pages I need
+            npages = (len(histograms)+5)/6
+
+            for ipage in range(npages):
+                for i,h in enumerate(histograms[6*ipage:6*(ipage+1)]):
+                    canvas.cd(i+1)
+                    # Make some space for the legend
+                    if h.GetMaximum() < 10:
+                        h.SetMaximum(1.5*h.GetMaximum())
+                    h.GetXaxis().SetTitle('Estimated CLs / Combined CLs')
+                    h.Draw()
+                    ROOT.myText(0.2, 0.96, ROOT.kBlack, label+': %s active SRs'%(h.GetName().split('_')[-1]))
+                    ROOT.myText(0.2, 0.9, ROOT.kBlack, 'Mean ratio = %.2f'%(h.GetMean()))
+                    ROOT.myText(0.2, 0.85, ROOT.kBlack, 'Entries: %i'%(h.GetEntries()))
+                    ROOT.myText(0.2, 0.8, ROOT.kBlack, 'Ratio < 0.7: %i models'%(h.Integral(0,h.GetXaxis().FindBin(0.699))))
+                    ROOT.myText(0.2, 0.75, ROOT.kBlack, 'Ratio > 1.4: %i models'%(h.Integral(h.GetXaxis().FindBin(1.401),h.GetNbinsX()+1)))
+                    ROOT.ATLASLabel(0.6,0.9,"Internal")
+                canvas.Print(fname)
+                canvas.Clear('D') # Keep the pads
+
+            canvas.Clear()
+
         # Close the file, on to the next
         canvas.Print(fname+']')
