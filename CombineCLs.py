@@ -83,7 +83,7 @@ class Combiner:
             result = results[resultkey]
 
             if not result.valid:
-                print 'Invalid result: %s has CLs = %f below the min of %f'%(resultkey,result.value,self.CalibCurves[resultkey].xmin)
+                print 'Invalid result: %s has CLs = %6e below the min of %6e'%(resultkey,result.value,self.CalibCurves[resultkey].xmin)
 
         else:
             # Absolutely no sensitive SR
@@ -126,6 +126,9 @@ class Combiner:
         LogCLsplot_valid = ROOT.TH1I('LogCLsplot_valid',';log(CL_{s});Number of models',120,-6,0)
         LogCLsplot_valid.SetDirectory(0)
 
+        # Output text file for the STAs
+        outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
+
         import math
 
         print 'Looping over %i events'%(tree.GetEntries())
@@ -141,6 +144,7 @@ class Combiner:
                 
             CLresult,SR = self.__AnalyseModel(entry)
 
+            outfile.write('%i,%6e\n'%(modelName,CLresult.value))
             CLsplot.Fill(CLresult.value)
             LogCLsplot.Fill(math.log10(CLresult.value))
             if CLresult.valid:
@@ -152,6 +156,7 @@ class Combiner:
             except KeyError:
                 SRcount[SR] = 1
 
+        outfile.close()
         yieldfile.Close()
 
         # Save the results
@@ -201,6 +206,12 @@ class Combiner:
         canvas.SetLogy()
         canvas.Print('/'.join([dirname,'LogCLsplot.pdf']))
         canvas.SetLogy(0)
+
+        # Add some useful printout too
+        Ninvalid = CLsplot.Integral() - CLsplot_valid.Integral()
+        print 'Number of invalid models :',Ninvalid
+        Nexcluded = CLsplot.Integral(0,CLsplot.GetXaxis().FindBin(0.049))
+        print 'Number of excluded models:',Nexcluded
         
 if __name__ == '__main__':
 

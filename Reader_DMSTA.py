@@ -366,6 +366,12 @@ class DMSTAReader:
         SRobj.GoodFit = GoodFit
 
         # Special case(s)
-        if SRobj.name in ['3L_SR0aBIN01','3L_SR0aBIN02','3L_SR0aBIN03','3L_SR0aBIN04']:
-            SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+        splitname = SRobj.name.split('_')
+        if len(splitname) > 2 and splitname[2] == 'SR0a':
+            if int(splitname[-1]) in [1,3,16]:
+                SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+
+        # This one's a hopeless case till we have better evgen yields
+        # if splitname[-1] == 'SR0Z':
+        #     SRobj.fitfunctions['CLs'].SetRange(0,0.7)
 
