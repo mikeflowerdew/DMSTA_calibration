@@ -98,7 +98,7 @@ class ProductCheck:
             elif '3L' in CombData.name:
                 name = '3L'
                 allowedSRs = ['EwkThreeLepton_3L_SR0a_%i'%i for i in range(1,21)]
-                # allowedSRs.append('SR0b') # Not sure if this is in or not?
+                allowedSRs.extend(['EwkThreeLepton_3L_SR0b','EwkThreeLepton_3L_SR1SS'])
             else:
                 print 'ERROR in ProductCheck: Unknown combination',CombData.name
                 continue
@@ -252,7 +252,17 @@ class ProductCheck:
             graph.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
             ROOT.myText(0.2, 0.96, ROOT.kBlack, label+' combination')
             ROOT.ATLASLabel(0.6,0.9,'Internal')
+
+            # Find the dynamic range of the graph,
+            # only use a linear scale if this is small enough
+            dynamicRange = graph.GetYaxis().GetXmax()/graph.GetYaxis().GetXmin() if graph.GetYaxis().GetXmin() else 1000.
+            if dynamicRange < 6.:
+                graph.SetMinimum(0)
+            else:
+                canvas.SetLogy()
+                graph.SetMaximum(2*graph.GetYaxis().GetXmax()) # Leave space for the ATLAS label!
             canvas.Print(fname)
+            canvas.SetLogy(0)
 
             # Plot the 1D projections
             histograms = self.__1Dprojections(graph)
