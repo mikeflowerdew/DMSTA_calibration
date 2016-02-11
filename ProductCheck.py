@@ -139,15 +139,20 @@ class ProductCheck:
             print info.ProductCLs/info.CombCLs if info.CombCLs else 0.0
 
     def __CLsMatchPlot(self, combination='aaaZ', CLsThreshold=1., adjustCLs=lambda comb,prod: (comb,prod)):
-        """Returns a graph of the ratio Pi(CLs_SR)/CLs_comb vs number of contributing regions.
+        """Returns a tuple of TGraph objects.
+        The first graph shows the ratio Pi(CLs_SR)/CLs_comb vs number of contributing regions.
+        The second graph shows the same ratio versus the combined CLs.
+        The third graph shows the same ratio versus the product CLs.
         The adjustCLs function allows the user to adjust the CLs value(s) (eg to round up)
         and/or to reject them altogether by returning None for at least one of the values.
         It must have the same signature as the default argument."""
 
         indata = self.__CLsCorrelation[combination]
         
-        result = ROOT.TGraph()
-        result.SetName('CLsRatio_%s_%s'%(combination,CLsThreshold))
+        result = tuple([ROOT.TGraph() for i in range(3)])
+        result[0].SetName('RatioVsNSR_%s_%s'%(combination,CLsThreshold))
+        result[1].SetName('RatioVsComb_%s_%s'%(combination,CLsThreshold))
+        result[2].SetName('RatioVsProd_%s_%s'%(combination,CLsThreshold))
 
         for info in indata:
 
@@ -157,7 +162,9 @@ class ProductCheck:
 
             if combCLs and prodCLs and combCLs < 0.5:
                 CLsRatio = prodCLs/combCLs
-                result.SetPoint(result.GetN(),len(info.SRCLs),CLsRatio)
+                result[0].SetPoint(result[0].GetN(),len(info.SRCLs),CLsRatio)
+                result[1].SetPoint(result[1].GetN(),combCLs,CLsRatio)
+                result[2].SetPoint(result[2].GetN(),prodCLs,CLsRatio)
 
                 if CLsRatio > 1e5: #1e8: # Wow!
                     print 'Extreme point found for',combination,CLsThreshold
@@ -209,7 +216,6 @@ class ProductCheck:
 
         # loop over possible CLs thresholds
         for threshold in [100,90,80,70]:
-            
             # Create the output file and input data
             fname = '/'.join([outdir,'threshold_%i.pdf'%(threshold)])
             graphs = [self.__CLsMatchPlot(name,threshold/100.) for name in sorted(self.__CLsCorrelation.keys())]
@@ -219,7 +225,6 @@ class ProductCheck:
         def twosmallest(indict):
             mylist = sorted(indict.values())[:2]
             return reduce(lambda x,y: x*y, mylist, 1)
-
         # Create the output file and input data
         fname = '/'.join([outdir,'twosmallest.pdf'])
         graphs = [self.__CLsMatchPlot(name,twosmallest) for name in sorted(self.__CLsCorrelation.keys())]
@@ -229,7 +234,6 @@ class ProductCheck:
         def twotimestwosmallest(indict):
             mylist = sorted(indict.values())[:2]
             return len(mylist)*reduce(lambda x,y: x*y, mylist, 1)
-
         # Create the output file and input data
         fname = '/'.join([outdir,'twotimestwosmallest.pdf'])
         graphs = [self.__CLsMatchPlot(name,twotimestwosmallest) for name in sorted(self.__CLsCorrelation.keys())]
@@ -238,7 +242,6 @@ class ProductCheck:
         # And another
         def smallest(indict):
             return min(indict.values()) if indict else 1.
-
         # Create the output file and input data
         fname = '/'.join([outdir,'smallest.pdf'])
         graphs = [self.__CLsMatchPlot(name,smallest) for name in sorted(self.__CLsCorrelation.keys())]
@@ -283,38 +286,92 @@ class ProductCheck:
         self.__PlotGraph(can, graphs, fname)
 
     def __PlotGraph(self, canvas, graphs, fname):
-        """Plot a list of graphs (CL ratio vs number of SRs), together with their 1D projections"""
+        """Plot a list of graphs (each element an output of self.__CLsMatchPlot), together with their 1D projections"""
 
         if not graphs: return
         
         canvas.Print(fname+'[')
 
-        for graph in graphs:
+        for graphtuple in graphs:
 
+            # ##########################################
+            # First plot the CLs ratio vs number of SRs
+            NSRgraph = graphtuple[0]
             # Ugh, a bit nasty but should be safe
-            label = graph.GetName().split('_')[1]
+            label = NSRgraph.GetName().split('_')[1]
 
             # plot the plots
-            graph.SetMarkerSize(0.8)
-            graph.Draw('ap')
-            graph.GetXaxis().SetTitle('Number of active SRs')
-            graph.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
+            NSRgraph.SetMarkerSize(0.8)
+            NSRgraph.Draw('ap')
+            NSRgraph.GetXaxis().SetTitle('Number of active SRs')
+            NSRgraph.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
             ROOT.myText(0.2, 0.96, ROOT.kBlack, label+' combination')
             ROOT.ATLASLabel(0.6,0.9,'Internal')
 
             # Find the dynamic range of the graph,
             # only use a linear scale if this is small enough
-            dynamicRange = graph.GetYaxis().GetXmax()/graph.GetYaxis().GetXmin() if graph.GetYaxis().GetXmin() else 1000.
+            dynamicRange = NSRgraph.GetYaxis().GetXmax()/NSRgraph.GetYaxis().GetXmin() if NSRgraph.GetYaxis().GetXmin() else 1000.
             if dynamicRange < 6.:
-                graph.SetMinimum(0)
+                NSRgraph.SetMinimum(0)
             else:
                 canvas.SetLogy()
-                graph.SetMaximum(2*graph.GetYaxis().GetXmax()) # Leave space for the ATLAS label!
+                NSRgraph.SetMaximum(2*NSRgraph.GetYaxis().GetXmax()) # Leave space for the ATLAS label!
             canvas.Print(fname)
             canvas.SetLogy(0)
 
-            # Plot the 1D projections
-            histograms = self.__1Dprojections(graph)
+            # ##########################################
+            # Now plot the second graph: CLs ratio vs combined CLs
+            CLsgraph = graphtuple[1]
+            # The label should be the same as before...
+
+            # plot the plots
+            CLsgraph.SetMarkerSize(0.8)
+            CLsgraph.Draw('ap')
+            CLsgraph.GetXaxis().SetTitle('Combined CLs')
+            CLsgraph.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
+            ROOT.myText(0.2, 0.96, ROOT.kBlack, label+' combination')
+            ROOT.ATLASLabel(0.6,0.9,'Internal')
+
+            # This one will always need a logarithmic x-axis
+            canvas.SetLogx()
+            # The y-axis dynamic range should also be the same as before
+            if dynamicRange < 6.:
+                CLsgraph.SetMinimum(0)
+            else:
+                canvas.SetLogy()
+                CLsgraph.SetMaximum(2*CLsgraph.GetYaxis().GetXmax()) # Leave space for the ATLAS label!
+            canvas.Print(fname)
+            canvas.SetLogx(0)
+            canvas.SetLogy(0)
+
+            # ##########################################
+            # Now plot the third graph: CLs ratio vs product CLs
+            CLsgraph = graphtuple[2]
+            # The label should be the same as before...
+
+            # plot the plots
+            CLsgraph.SetMarkerSize(0.8)
+            CLsgraph.Draw('ap')
+            CLsgraph.GetXaxis().SetTitle('Estimated CLs')
+            CLsgraph.GetYaxis().SetTitle('Estimated CLs / Combined CLs')
+            ROOT.myText(0.2, 0.96, ROOT.kBlack, label+' combination')
+            ROOT.ATLASLabel(0.6,0.9,'Internal')
+
+            # This one will always need a logarithmic x-axis
+            canvas.SetLogx()
+            # The y-axis dynamic range should also be the same as before
+            if dynamicRange < 6.:
+                CLsgraph.SetMinimum(0)
+            else:
+                canvas.SetLogy()
+                CLsgraph.SetMaximum(2*CLsgraph.GetYaxis().GetXmax()) # Leave space for the ATLAS label!
+            canvas.Print(fname)
+            canvas.SetLogx(0)
+            canvas.SetLogy(0)
+
+            # ##########################################
+            # Plot the 1D projections of NSRgraph
+            histograms = self.__1Dprojections(NSRgraph)
             canvas.Clear()
             canvas.Divide(3,2) # Nicely fits on one page
             # Round up the number of pages I need
