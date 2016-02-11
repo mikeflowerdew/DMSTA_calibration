@@ -239,6 +239,15 @@ class ProductCheck:
         graphs = [self.__CLsMatchPlot(name,twotimestwosmallest) for name in sorted(self.__CLsCorrelation.keys())]
         self.__PlotGraph(can, graphs, fname)
 
+        # Try an experimental function
+        def threesmallest(indict):
+            mylist = sorted(indict.values())[:3]
+            return reduce(lambda x,y: x*y, mylist, 1)
+        # Create the output file and input data
+        fname = '/'.join([outdir,'threesmallest.pdf'])
+        graphs = [self.__CLsMatchPlot(name,threesmallest) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
         # And another
         def smallest(indict):
             return min(indict.values()) if indict else 1.
@@ -265,6 +274,10 @@ class ProductCheck:
         fname = '/'.join([outdir,'twosmallest_chop_1em6.pdf'])
         graphs = [self.__CLsMatchPlot(name,twosmallest,chopLow_1em6) for name in sorted(self.__CLsCorrelation.keys())]
         self.__PlotGraph(can, graphs, fname)
+        # 4: Three smallest
+        fname = '/'.join([outdir,'threesmallest_chop_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,threesmallest,chopLow_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
 
         # Try rounding up very low CL values
         def roundUp_1em6(combCLs,prodCLs):
@@ -283,6 +296,10 @@ class ProductCheck:
         # 3: Two smallest
         fname = '/'.join([outdir,'twosmallest_round_1em6.pdf'])
         graphs = [self.__CLsMatchPlot(name,twosmallest,roundUp_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+        # 4: Three smallest
+        fname = '/'.join([outdir,'threesmallest_round_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,threesmallest,roundUp_1em6) for name in sorted(self.__CLsCorrelation.keys())]
         self.__PlotGraph(can, graphs, fname)
 
     def __PlotGraph(self, canvas, graphs, fname):
