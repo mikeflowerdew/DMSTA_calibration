@@ -54,8 +54,6 @@ class Combiner:
 
         results = {}
 
-        
-        
         for analysisSR,graph in self.CalibCurves.items():
 
             # slow, slow, slow, but I guess OK for now
@@ -91,7 +89,7 @@ class Combiner:
             result = CLs(1.)
             result.valid = False        
         
-        return result,resultkey
+        return result,resultkey,len(results)
 
     def ReadNtuple(self, outdirname):
         """Read all truth yields, record the estimated CLs values."""
@@ -126,6 +124,14 @@ class Combiner:
         LogCLsplot_valid = ROOT.TH1I('LogCLsplot_valid',';log(CL_{s});Number of models',120,-6,0)
         LogCLsplot_valid.SetDirectory(0)
 
+        # How many SRs were used? Absolute maximum of 42 :D
+        NSRplot = ROOT.TH1I('NSRplot',';Number of active SRs;Number of models',43,-0.5,42.5)
+        NSRplot.SetDirectory(0)
+        # More refined information, in 20 bins of CLs
+        NSRplots = [NSRplot.Clone('NSRplot_%i'%(i)) for i in range(20)]
+        for p in NSRplots:
+            p.SetDirectory(0)
+
         # Output text file for the STAs
         outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
 
@@ -142,11 +148,14 @@ class Combiner:
             # FIXME: Just for testing
             # if modelName > 3e4: break
                 
-            CLresult,SR = self.__AnalyseModel(entry)
+            CLresult,SR,NSRs = self.__AnalyseModel(entry)
 
             outfile.write('%i,%6e\n'%(modelName,CLresult.value))
             CLsplot.Fill(CLresult.value)
             LogCLsplot.Fill(math.log10(CLresult.value))
+            NSRplot.Fill(NSRs)
+            if CLresult.value < 1.: # This would be zero by default
+                NSRplots[int(CLresult.value/0.05)].Fill(NSRs)
             if CLresult.valid:
                 CLsplot_valid.Fill(CLresult.value)
                 LogCLsplot_valid.Fill(math.log10(CLresult.value))
@@ -165,6 +174,9 @@ class Combiner:
         LogCLsplot.Write()
         CLsplot_valid.Write()
         LogCLsplot_valid.Write()
+        NSRplot.Write()
+        for p in NSRplots:
+            p.Write()
         outfile.Close()
 
         from pprint import pprint
@@ -206,6 +218,17 @@ class Combiner:
         canvas.SetLogy()
         canvas.Print('/'.join([dirname,'LogCLsplot.pdf']))
         canvas.SetLogy(0)
+
+        NSRname = '/'.join([dirname,'NSRplot.pdf'])
+        NSRplot = infile.Get('NSRplot')
+        NSRplot.Draw()
+        canvas.Print(NSRname+'(')
+        for ibin in range(20):
+            NSRplot = infile.Get('NSRplot_%i'%(ibin))
+            NSRplot.Draw()
+            ROOT.myText(0.2,0.95,ROOT.kBlack,'Bin %i: %i%% < CLs < %i%%'%(ibin,5*ibin,5*(ibin+1)))
+            canvas.Print(NSRname)
+        canvas.Print(NSRname+']')
 
         # Add some useful printout too
         Ninvalid = CLsplot.Integral() - CLsplot_valid.Integral()
