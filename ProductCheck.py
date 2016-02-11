@@ -138,8 +138,11 @@ class ProductCheck:
             print info.CombCLs,info.ProductCLs,info.SRCLs
             print info.ProductCLs/info.CombCLs if info.CombCLs else 0.0
 
-    def __CLsMatchPlot(self, combination='aaaZ', CLsThreshold=1.):
-        """Returns a graph of the ratio Pi(CLs_SR)/CLs_comb vs number of contributing regions."""
+    def __CLsMatchPlot(self, combination='aaaZ', CLsThreshold=1., adjustCLs=lambda comb,prod: (comb,prod)):
+        """Returns a graph of the ratio Pi(CLs_SR)/CLs_comb vs number of contributing regions.
+        The adjustCLs function allows the user to adjust the CLs value(s) (eg to round up)
+        and/or to reject them altogether by returning None for at least one of the values.
+        It must have the same signature as the default argument."""
 
         indata = self.__CLsCorrelation[combination]
         
@@ -150,8 +153,16 @@ class ProductCheck:
 
             info.ComputeProduct(CLsThreshold)
 
-            if info.CombCLs and info.CombCLs < 0.5:
-                result.SetPoint(result.GetN(),len(info.SRCLs),info.ProductCLs/info.CombCLs)
+            combCLs,prodCLs = adjustCLs(info.CombCLs,info.ProductCLs)
+
+            if combCLs and prodCLs and combCLs < 0.5:
+                CLsRatio = prodCLs/combCLs
+                result.SetPoint(result.GetN(),len(info.SRCLs),CLsRatio)
+
+                if CLsRatio > 1e5: #1e8: # Wow!
+                    print 'Extreme point found for',combination,CLsThreshold
+                    print 'Combined = %.4e, estimate = %.4e for %i SRs'%(combCLs,prodCLs,len(info.SRCLs))
+                    print sorted(info.SRCLs.values())
 
                 # FIXME
 #                 try:
@@ -197,7 +208,7 @@ class ProductCheck:
         can = ROOT.TCanvas('can','can',800,800)
 
         # loop over possible CLs thresholds
-        for threshold in [100,95,90,85,80,75]:
+        for threshold in [100,90,80,70]:
             
             # Create the output file and input data
             fname = '/'.join([outdir,'threshold_%i.pdf'%(threshold)])
@@ -233,8 +244,46 @@ class ProductCheck:
         graphs = [self.__CLsMatchPlot(name,smallest) for name in sorted(self.__CLsCorrelation.keys())]
         self.__PlotGraph(can, graphs, fname)
 
+        # Try chopping out very low CL values
+        def chopLow_1em6(combCLs,prodCLs):
+            if combCLs < 1e-6: combCLs = None
+            if prodCLs < 1e-6: prodCLs = None
+            return combCLs,prodCLs
+        # Try chopping with different CLs product procedures
+        # 1: Default
+        fname = '/'.join([outdir,'threshold_100_chop_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,1.,chopLow_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+        # 2: Smallest
+        fname = '/'.join([outdir,'smallest_chop_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,smallest,chopLow_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+        # 3: Two smallest
+        fname = '/'.join([outdir,'twosmallest_chop_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,twosmallest,chopLow_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
+        # Try rounding up very low CL values
+        def roundUp_1em6(combCLs,prodCLs):
+            if combCLs < 1e-6: combCLs = 1e-6
+            if prodCLs < 1e-6: prodCLs = 1e-6
+            return combCLs,prodCLs
+        # Try chopping with different CLs product procedures
+        # 1: Default
+        fname = '/'.join([outdir,'threshold_100_round_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,1.,roundUp_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+        # 2: Smallest
+        fname = '/'.join([outdir,'smallest_round_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,smallest,roundUp_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+        # 3: Two smallest
+        fname = '/'.join([outdir,'twosmallest_round_1em6.pdf'])
+        graphs = [self.__CLsMatchPlot(name,twosmallest,roundUp_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
     def __PlotGraph(self, canvas, graphs, fname):
-        """Plot two graphs, together with their 1D projections"""
+        """Plot a list of graphs (CL ratio vs number of SRs), together with their 1D projections"""
 
         if not graphs: return
         
