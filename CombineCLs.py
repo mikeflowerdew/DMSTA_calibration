@@ -4,9 +4,39 @@ class CLs:
     """Small data class"""
 
     def __init__(self, value):
-        self.value = value
-        self.valid = True
-        self.ratio = 1. # ratio to minimum CLs value
+        try:
+            # Maybe "value" is actually a CLs object
+            self.value = value.value
+            self.valid = value.valid
+            self.ratio = value.ratio
+        except AttributeError:
+            # Or maybe "value" is really just a value
+            self.value = value
+            self.valid = True
+            self.ratio = 1. # ratio to minimum CLs value
+
+    def __float__(self):
+        return float(self.value)
+
+    def __cmp__(self, other):
+        if self.value < float(other):
+            return -1
+        elif self.value > float(other):
+            return 1
+        else:
+            return 0
+
+    def __mul__(self, other):
+        # A bit tricky to define, but let's go
+
+        result = CLs(self.value*other.value)
+        result.valid = self.valid and other.valid
+        result.ratio = min([self.ratio,other.ratio])
+        # Explanation: the ratio is used to determine if the
+        # result was extrapolated. Therefore we want to
+        # record the worst case, ie the smallest.
+
+        return result
 
 class Combiner:
 
@@ -17,6 +47,10 @@ class Combiner:
         self.__yieldfilename = yieldfilename
 
         self.ReadCalibrations(calibfilename)
+
+        # Some other configurable options
+        self.strategy = 'smallest'
+        self.truncate = False
 
     def ReadCalibrations(self, calibfilename):
         """Reads all TF1 objects and stores them."""
@@ -77,8 +111,22 @@ class Combiner:
                 number.ratio = number.value/graph.xmin
 
         if results:
-            resultkey = min(results, key=results.get)
-            result = results[resultkey]
+            resultkey = min(results, key=results.get) # keep a record of the best SR no matter what
+            # FIXME: Use results[resultkey] to find if CLs < 0.05
+
+            # What we do next depends on the CLs combination strategy
+            if self.strategy == 'smallest':
+                # Copy the smallest result, in case we truncate it later
+                result = CLs(results[resultkey])
+            elif self.strategy == 'twosmallest':
+                sortedkeys = sorted(results, key=results.get)[:2]
+                mylist = [results[k] for k in sortedkeys]
+                result = reduce(lambda x,y: x*y, mylist, CLs(1.))
+                if len(mylist) > 1:
+                    assert(result.value == mylist[0].value*mylist[1].value)
+
+            if self.truncate and result.value < 1e-6:
+                result.value = 1e-6
 
             if not result.valid:
                 print 'Invalid result: %s has CLs = %6e below the min of %6e'%(resultkey,result.value,self.CalibCurves[resultkey].xmin)
@@ -238,6 +286,30 @@ class Combiner:
         
 if __name__ == '__main__':
 
+    # Add some command line options
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="""
+           Reads truth yields and uses the CLs calibration functions to produce the ATLAS likelihood.""",
+        )
+    parser.add_argument(
+        "-a", "--all",
+        action = "store_true",
+        dest = "all",
+        help = "Process the full event loop")
+    parser.add_argument(
+        "-s", "--strategy",
+        dest = "strategy",
+        choices = ['smallest','twosmallest'],
+        default = 'smallest',
+        help = "How to combine multiple CLs values")
+    parser.add_argument(
+        "-t", "--truncate",
+        action = 'store_true',
+        dest = "truncate",
+        help = "Truncate CLs values below 1e-6")
+    cmdlinearguments = parser.parse_args()
+
     import ROOT
     ROOT.gROOT.SetBatch(True)
     ROOT.gROOT.LoadMacro("AtlasStyle.C")
@@ -247,5 +319,8 @@ if __name__ == '__main__':
 
     obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
                    'plots/calibration.root')
-    # obj.ReadNtuple('results')
+    if cmdlinearguments.all:
+        obj.strategy = cmdlinearguments.strategy
+        obj.truncate = cmdlinearguments.truncate
+        obj.ReadNtuple('results')
     obj.PlotSummary('results')
