@@ -190,7 +190,7 @@ def NSigStrategy(existingResults, SRobj, granularity=0.02):
     existingResults.sort()
     # Special case to make sure we get to high values
     if existingResults[0][1] < 0.999:
-        existingResults.append( (0,1) )
+        existingResults.insert(0, (0,1) )
 
     for result0,result1 in pairwise(existingResults):
 
