@@ -241,6 +241,12 @@ if __name__=='__main__':
     config.NbkgErr = 0.5
     config.Limit = 5.9
 
+    config.SR = 'SR_WWb'
+    config.Ndata = 43
+    config.Nbkg = 48.3 # sum of SF and DF
+    config.NbkgErr = 4.3 # quadrature sum of uncertainties
+    config.Limit = 10. # Erm, guesstimate, but not too important
+
     YieldValues = NSigStrategy([], config) # First list of variables
     results = []
 
