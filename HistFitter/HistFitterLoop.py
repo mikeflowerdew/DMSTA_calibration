@@ -38,7 +38,7 @@ class PaperResults:
         except: # Almost any error indicates a poor result
             return False
 
-        return self.SR and self.Nbkg and self.NbkgErr and self.Ndata
+        return self.SR and self.Nbkg and self.NbkgErr and isinstance(self.Ndata,int)
 
 # I want to run HistFitter within a subdirectory for safety
 from contextlib import contextmanager
@@ -60,7 +60,7 @@ def RunOneSearch(config, Nsig):
     It's therefore a little bit convoluted...
     """
 
-    if not config.isOK(): return
+    if not config.isOK(): return None
 
     testdir = config.SR
     import os,shutil
@@ -192,6 +192,10 @@ def NSigStrategy(existingResults, SRobj, granularity=0.02):
     if existingResults[0][1] < 0.999:
         existingResults.insert(0, (0,1) )
 
+    from pprint import pprint
+    print 'Results so far...'
+    pprint(existingResults)
+
     for result0,result1 in pairwise(existingResults):
 
         # How does the CLs difference compare to our desired tolerance?
@@ -211,7 +215,6 @@ def NSigStrategy(existingResults, SRobj, granularity=0.02):
         # result0 *should* have the smallest Nsig value, but just in case...
         try: assert(result1[0] > result0[0])
         except AssertionError:
-            from pprint import pprint
             pprint(existingResults)
             raise
 
@@ -233,50 +236,77 @@ if __name__=='__main__':
     ROOT.gROOT.LoadMacro("AtlasLabels.C") 
     ROOT.gSystem.Load('libSusyFitter.so')
 
-    # For now, run just one analysis
-    config = PaperResults()
-    config.SR = 'SR0noZa'
-    config.Ndata = 3
-    config.Nbkg = 1.6
-    config.NbkgErr = 0.5
-    config.Limit = 5.9
+    # Read in some analyses!
+    datafile = open('PaperSRData.dat')
 
-    config.SR = 'SR_WWb'
-    config.Ndata = 43
-    config.Nbkg = 48.3 # sum of SF and DF
-    config.NbkgErr = 4.3 # quadrature sum of uncertainties
-    config.Limit = 10. # Erm, guesstimate, but not too important
+    configlist = []
+    thingsToWrite = [] # Keeps persistent objects in memory
 
-    YieldValues = NSigStrategy([], config) # First list of variables
-    results = []
+    for line in datafile:
+        if line.startswith('#'): continue
+        splitline = line.split()
+        if len(splitline) < 5: continue
 
-    while YieldValues:
+        config = PaperResults()
+        try:
+            config.SR      = splitline[0]
+            config.Ndata   = int(splitline[1])
+            config.Nbkg    = float(splitline[2])
+            config.NbkgErr = float(splitline[3])
+            config.Limit   = float(splitline[4])
+        except:
+            continue
 
-        # Pick up the first yield value
-        Nsig = YieldValues.pop(0)
+        # Not sure I'll actually need this...
+        configlist.append(config)
 
-        CLs = RunOneSearch(config, Nsig)
-        results.append( (Nsig,CLs) )
+        # Config looks OK - let's run HistFitter!
 
-        # If we're out of values, give a chance to replenish them
-        if not YieldValues:
-            YieldValues = NSigStrategy(results, config)
+        YieldValues = NSigStrategy([], config, 0.01) # First list of variables
+        results = []
 
-    from pprint import pprint
-    pprint(results)
+        while YieldValues:
 
-    graph = ROOT.TGraph()
-    graph.SetName(config.SR+'_graph')
-    results.sort() # Just in case
-    for Nsig,CLs in results:
-        graph.SetPoint(graph.GetN(),CLs,Nsig)
+            # Pick up the first yield value
+            Nsig = YieldValues.pop(0)
+            
+            if not config.isOK():
+                print 'CONFIG NOT OK!!!!'
+                
 
-    # Amazingly this works!
-    function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), 0, 1, 1)
-    function.SetParameter(0,1) # Default "normalisation"
+            CLs = RunOneSearch(config, Nsig)
+            if CLs is not None:
+                results.append( (Nsig,CLs) )
+            
+            # If we're out of values, give a chance to replenish them
+            if not YieldValues:
+                YieldValues = NSigStrategy(results, config, 0.01) # FIXME!!!
+
+        from pprint import pprint
+        print '============= Printing results for',config.SR
+        pprint(results)
+
+        graph = ROOT.TGraph()
+        graph.SetName(config.SR+'_graph')
+        results.sort() # Just in case
+        for Nsig,CLs in results:
+            graph.SetPoint(graph.GetN(),CLs,Nsig)
+
+        # Amazingly this works!
+        function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), 0, 1, 1)
+        function.SetParameter(0,1) # Default "normalisation"
+
+        thingsToWrite.append(graph.Clone())
+        thingsToWrite.append(function.Clone())
+
+        # Store a copy in case later SRs fail
+        outfile = ROOT.TFile.Open('/'.join([config.SR,'result.root']),'RECREATE')
+        graph.Write()
+        function.Write()
+        outfile.Close()
     
     # Store TGraphs in an output file
     outfile = ROOT.TFile.Open('CLsFunctions.root','RECREATE')
-    graph.Write()
-    function.Write()
+    for thing in thingsToWrite:
+        thing.Write()
     outfile.Close()
