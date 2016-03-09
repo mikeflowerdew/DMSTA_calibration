@@ -163,14 +163,22 @@ def RunOneSearch(config, Nsig):
     except:
         return None
 
-def NSigStrategy(existingResults, SRobj, granularity=0.02):
+def NSigStrategy(existingResults, SRobj, granularity=0.05, logCLs=True, logMin=-6):
     """Returns a list of signal yield values to try,
     given a list of (Nsig,CLs) tuples.
     SRobj is a PaperResults object.
-    The granularity argument is the desired CLs separation
-    - if larger gaps are found, yield values should be suggested to fill
-    in the gap.
+    The granularity argument is the desired CLs separation - if larger
+    gaps are found then the function returns a list of yield values
+    to try and fill the gaps.
     May return an empty list in case of error or no more samples needed.
+
+    The default is to populate log10(CLs) evenly between logMin and 0
+    (10^[logMin] < CLs < 1). If logCLs is False, then the function attempts
+    to populate CLs evenly between 0 and 1.
+    In both cases, the granularity sets the desired maximum separation between
+    neighbouring points.
+    Remember that the final TF1 has 100 points by default, so log granularities
+    much below 100/abs(logMin) and linear granularities much below 0.01 are pointless.
     """
 
     if not existingResults:
@@ -190,7 +198,39 @@ def NSigStrategy(existingResults, SRobj, granularity=0.02):
     existingResults.sort()
     # Special case to make sure we get to high values
     if existingResults[0][1] < 0.999:
+        # Add a point corresponding to Yield=0 and CLs=1
         existingResults.insert(0, (0,1) )
+
+    # Let's make sure we go low enough too
+    if logCLs and math.log10(existingResults[-1][1]) > logMin:
+        # I don't want to overshoot logMin by too much,
+        # as this can be very wasteful.
+
+        # If we're a long way from the end, just double the yield
+        if math.log10(existingResults[-1][1])/logMin < 0.5:
+            return [2.0*existingResults[-1][0]]
+
+        # So assume that the gradient in Yield vs log10(CLs) is constant
+        # and guesstimate the Yield I need from that.
+        # There should be no danger of existingResults having <2 elements.
+        DeltaCLs = math.log10(existingResults[-2][1]/existingResults[-1][1])
+        DeltaYield = existingResults[-1][0] - existingResults[-2][0]
+        CLsDistance = math.log10(existingResults[-1][1]) - (1.01*logMin) # Allow a little safety margin
+
+        # Linear extrapolation
+        YieldEstimate = existingResults[-1][0] + CLsDistance*DeltaYield/DeltaCLs
+
+        # The above estimate can sometimes overshoot.
+        # If the extrapolation is very big, just double the yield
+        YieldEstimate = min([YieldEstimate, 2.0*existingResults[-1][0]])
+
+        return [YieldEstimate]
+
+    if not logCLs and existingResults[-1][1] > granularity:
+        # Just increase by a factor of 2
+        # This might give a stupidly low CLs value,
+        # but on a linear scale this doesn't really matter too much
+        return [2.0*existingResults[-1][0]]
 
     from pprint import pprint
     print 'Results so far...'
@@ -198,8 +238,8 @@ def NSigStrategy(existingResults, SRobj, granularity=0.02):
 
     for result0,result1 in pairwise(existingResults):
 
-        # How does the CLs difference compare to our desired tolerance?
-        CLsDiff = abs(result1[1] - result0[1])
+        # How does the CLs difference (or its log) compare to our desired tolerance?
+        CLsDiff = abs(math.log10(result1[1]/result0[1])) if logCLs else abs(result1[1] - result0[1])
         if CLsDiff < granularity:
             # OK, move on
             continue
@@ -242,6 +282,10 @@ if __name__=='__main__':
     configlist = []
     thingsToWrite = [] # Keeps persistent objects in memory
 
+    # Maybe promote these to a command line option...?
+    doLogCLs = True
+    logMin = -6
+
     for line in datafile:
         if line.startswith('#'): continue
         splitline = line.split()
@@ -261,8 +305,9 @@ if __name__=='__main__':
         configlist.append(config)
 
         # Config looks OK - let's run HistFitter!
-
-        YieldValues = NSigStrategy([], config, 0.01) # First list of variables
+        YieldOrder = [] # A record so I can see how the search progressed
+        YieldValues = NSigStrategy([], config, logCLs=doLogCLs, logMin=logMin) # First list of variables
+        YieldOrder.append([v for v in YieldValues])
         results = []
 
         while YieldValues:
@@ -280,33 +325,46 @@ if __name__=='__main__':
             
             # If we're out of values, give a chance to replenish them
             if not YieldValues:
-                YieldValues = NSigStrategy(results, config, 0.01) # FIXME!!!
+                YieldValues = NSigStrategy(results, config, logCLs=doLogCLs, logMin=logMin)
+                YieldOrder.append([v for v in YieldValues])
+
+            # Crude attempt to avoid an infinite loop
+            if len(YieldOrder) > 10:
+                print 'Cutting out because I reached %i iterations'%(len(YieldOrder))
+                break
 
         from pprint import pprint
         print '============= Printing results for',config.SR
         pprint(results)
+        print '============= Printing the Yield search pattern for',config.SR
+        pprint(YieldOrder)
 
         graph = ROOT.TGraph()
         graph.SetName(config.SR+'_graph')
         results.sort() # Just in case
         for Nsig,CLs in results:
-            graph.SetPoint(graph.GetN(),CLs,Nsig)
+            graph.SetPoint(graph.GetN(),math.log10(CLs) if doLogCLs else CLs,Nsig)
 
         # Amazingly this works!
-        function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), 0, 1, 1)
+        if doLogCLs:
+            function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), logMin, 0, 1)
+        else:
+            function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), 0, 1, 1)
         function.SetParameter(0,1) # Default "normalisation"
 
         thingsToWrite.append(graph.Clone())
         thingsToWrite.append(function.Clone())
 
         # Store a copy in case later SRs fail
-        outfile = ROOT.TFile.Open('/'.join([config.SR,'result.root']),'RECREATE')
+        outfilename = 'result_logCLs.root' if doLogCLs else 'result_linearCLs.root'
+        outfile = ROOT.TFile.Open('/'.join([config.SR,outfilename]),'RECREATE')
         graph.Write()
         function.Write()
         outfile.Close()
-    
+
     # Store TGraphs in an output file
-    outfile = ROOT.TFile.Open('CLsFunctions.root','RECREATE')
+    outfilename = 'CLsFunctions_logCLs.root' if doLogCLs else 'CLsFunctions_linearCLs.root'
+    outfile = ROOT.TFile.Open(outfilename,'RECREATE')
     for thing in thingsToWrite:
         thing.Write()
     outfile.Close()
