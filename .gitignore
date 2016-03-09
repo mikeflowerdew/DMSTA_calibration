@@ -5,4 +5,4 @@ dummyplots
 *.pdf
 *.out
 Data_Yields
-results
+results*

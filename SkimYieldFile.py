@@ -17,6 +17,7 @@ intree.SetBranchStatus('*EwkThreeLepton*', 1)
 intree.SetBranchStatus('*EwkTwoLepton*', 1)
 intree.SetBranchStatus('*EwkTwoTau*', 1)
 intree.SetBranchStatus('*DisappearingTrack*', 1)
+intree.SetBranchStatus('EW_Events_truth',1)
 
 # Add some associated info about the models
 intree.SetBranchStatus('BF_chi_*', 1)
@@ -74,7 +75,7 @@ for entry in intree:
         print 'On model %6i, written %3i so far'%(modelName,nwritten)
 
     # Check if the truth analysis actually ran
-    HaveTruthAcc = entry.EW_ExpectedEvents_EwkTwoLepton_SR_Zjets != -1
+    HaveTruthAcc = entry.EW_Events_truth != -1
 
     if HaveTruthAcc:
         # Write all events to "evgen" tree for easier processing later

@@ -5,8 +5,12 @@ A secondary goal of this repository is to learn a little more about how git work
 
 The main script in this package is CorrelationPlotter.py. This holds the infrastructure to plot the correlations between CL values and the truth yield. As the input file format is not yet known, the plotting code is kept separate from the read-in code. At the moment, only dummy read-in classes are available.
 
-To test using randomly-generated pseudodata:
-$ ./CorrelationPlotter.py --dummyrandom
-To test read-in of dummy text files:
-$ ./CorrelationPlotter.py --dummy
-Other options are not available yet.
+To run the main analysis, just try
+```bash
+$ ./CorrelationPlotter.py
+```
+To combine the end results (ie apply the CLs calibration to truth-level events) do
+```bash
+$ ./CombineCLs.py
+```
+Various other scripts exist, look for the executable files and try `-h`.
