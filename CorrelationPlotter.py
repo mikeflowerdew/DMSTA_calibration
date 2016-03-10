@@ -179,8 +179,20 @@ class CorrelationPlotter:
             except AttributeError:
                 # Should not happen, this is just in case
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
+
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
-            graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
+            # Check if the x-axis goes negative (ie log(CLs) vs CLs)
+            if graph.GetXaxis().GetXmin() >= 0:
+                # Linear CL scale
+                graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
+                doLogX = True
+            else:
+                # Log(CL) scale
+                assert(graph.GetXaxis().GetXmax() <= 0)
+                graph.GetXaxis().SetLimits(graph.GetXaxis().GetXmin(),0)
+                doLogX = False
+
+            # Draw again (this is the pretty one!)
             graph.Draw('ap')
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
@@ -189,17 +201,22 @@ class CorrelationPlotter:
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf(']))
 
             # Try some variations with log scales
-            self.__canvas.SetLogx()
-            self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
+            if doLogX:
+                self.__canvas.SetLogx()
+                self.__canvas.SetLogy()
+                self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy()
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
-            self.__canvas.SetLogx()
-            self.__canvas.SetLogy(0)
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf)']))
+            if doLogX:
+                self.__canvas.SetLogx()
+                self.__canvas.SetLogy(0)
+                self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
+
+            # Close the file
+            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf]']))
 
             # Reset to linear scale
             self.__canvas.SetLogx(0)
@@ -263,6 +280,24 @@ class CorrelationPlotter:
 
         # Reset the canvas
         self.__canvas.SetBottomMargin(oldmargin)
+
+        print
+        print '======= Final summary printout'
+
+        keylength = max([len(x) for x in self.__fitresults.keys()])
+        keyfmtstring = '%%%is'%(keylength) # Yay, formatting the format string!
+
+        for key,fitresult in sorted(self.__fitresults.items()):
+
+            key = keyfmtstring%(key)
+            if fitresult.NPar() == 0:
+                print '%s: No free parameters'%(key)
+            elif fitresult.NPar() == 1:
+                print '%s: %.4f +- %.2f %%'%(key,fitresult.Value(0),100.*fitresult.Error(0)/fitresult.Value(0))
+            else:
+                print '%s:'%(key)
+                for i in range(fitresult.NPar()):
+                    print '  Par %i: %.4f +- %.2f %%'%(i,fitresult.Value(i),100.*fitresult.Error(i)/fitresult.Value(i))
 
     def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data.
@@ -391,4 +426,3 @@ if __name__ == '__main__':
         plotter.PlotData(plotdir)
         plotter.SaveData(plotdir)
 
-    

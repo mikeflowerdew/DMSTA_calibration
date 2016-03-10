@@ -21,7 +21,9 @@ class SignalRegion:
         'CLsExp' : 'Expected CL_{s}',
         'CLbExp' : 'Expected CL_{b}',
         'CLsbExp': 'Expected CL_{s+b}',
-    }
+
+        'LogCLs' : 'log_{10}(CL_{s})',
+        }
     
     def __init__(self, name, infolist=None):
         """Initialise the object with a name and (optionally) a list of which CL info will be provided.

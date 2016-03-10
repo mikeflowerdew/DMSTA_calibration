@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from glob import glob
+import math
 from DataObject import SignalRegion
 from ValueWithError import valueWithError
 import ROOT
@@ -221,7 +222,7 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['CLs'])
+                obj = SignalRegion(analysisSR, ['LogCLs'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
@@ -250,7 +251,7 @@ class DMSTAReader:
                 datum = obj.AddData(modelname)
 
             if CLs and CLs > 0:
-                datum['CLs'] = CLs
+                datum['LogCLs'] = math.log10(CLs)
                 
         f.close() # Let's be tidy
 
@@ -264,7 +265,7 @@ class DMSTAReader:
         obj = next((x for x in data if x.name == analysisSR), None)
         if obj is None:
             # First time we've looked at this analysisSR
-            obj = SignalRegion(analysisSR, ['CLs'])
+            obj = SignalRegion(analysisSR, ['LogCLs'])
             data.append(obj)
 
             # Store the equivalent ntuple branch name for convenience later
@@ -312,7 +313,7 @@ class DMSTAReader:
                 datum = obj.AddData(modelpoint)
 
             if CLb and CLsb:
-                datum['CLs'] = CLsb/CLb
+                datum['LogCLs'] = math.log10(CLsb/CLb)
 
         f.close() # Let's be tidy
         
@@ -348,30 +349,36 @@ class DMSTAReader:
             fitfunc = graph.GetFunction('fitfunc')
     
             # Compare the error of the log coefficient to its value
-            logcoeff = valueWithError(fitfunc.GetParameter(1),fitfunc.GetParError(1))
-            if abs(logcoeff.error) > 0.5*abs(logcoeff.value):
+            normcoeff = valueWithError(fitfunc.GetParameter(0),fitfunc.GetParError(0))
+            if abs(normcoeff.error) > 0.5*abs(normcoeff.value):
                 return False
 
             print 'Success!'
             # Leave space for additional criteria if I need them
             return True
-    
-        SRobj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)++1')
-        SRobj.fitfunctions['CLs'].SetParameter(0,-10.)
-        SRobj.fitfunctions['CLs'].SetParLimits(0,-500,0)
-        SRobj.fitfunctions['CLs'].SetParameter(1,-10.)
-        SRobj.fitfunctions['CLs'].SetParLimits(1,-500,0)
-        SRobj.fitfunctions['CLs'].SetParLimits(2,0,500)
-        SRobj.fitfunctions['CLs'].SetRange(0,0.8)
-        SRobj.GoodFit = GoodFit
 
-        # Special case(s)
-        splitname = SRobj.name.split('_')
-        if len(splitname) > 2 and splitname[2] == 'SR0a':
-            if int(splitname[-1]) in [1,3,16]:
-                SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+        # Extract HistFitter curve from the root file (FIXME: unconfigurable)
+        funcfile = ROOT.TFile.Open('HistFitter/CLsFunctions_logCLs.root')
 
-        # This one's a hopeless case till we have better evgen yields
-        # if splitname[-1] == 'SR0Z':
-        #     SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+        if funcfile and not funcfile.IsZombie():
 
+            # Extracting the TF1 object directly doesn't seem to work,
+            # as the normalisation parameter becomes fixed.
+            # So, extract the graph object instead and recreate the TF1.
+            # The real SR name is from "SR" to the end.
+            shortSRname = SRobj.name[SRobj.name.index('SR'):]
+            graph = funcfile.Get(shortSRname+'_graph')
+
+            # FIXME: hard-coded -6...
+            SRobj.fitfunctions['LogCLs'] = ROOT.TF1('fitfunc', lambda x,p: p[0]*graph.Eval(x[0]), -6, 0, 1)
+
+            # Extract the TF1 object - does not work.
+            # SRobj.fitfunctions['LogCLs'] = funcfile.Get(shortSRname)
+            # SRobj.fitfunctions['LogCLs'].SetName('fitfunc') # for later convenience
+            SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
+
+            SRobj.GoodFit = GoodFit
+
+        else:
+
+            print 'ERROR in Reader_DMSTA: could not open HistFitter file'
