@@ -329,7 +329,7 @@ if __name__=='__main__':
                 YieldOrder.append([v for v in YieldValues])
 
             # Crude attempt to avoid an infinite loop
-            if len(YieldOrder) > 10:
+            if len(YieldOrder) > 100:
                 print 'Cutting out because I reached %i iterations'%(len(YieldOrder))
                 break
 
