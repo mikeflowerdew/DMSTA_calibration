@@ -170,8 +170,15 @@ class CorrelationPlotter:
 
         for analysisSR,graph in self.__correlations.items():
 
-            graph.SetMarkerSize(2)
+            graph.SetMarkerSize(1)
             graph.SetMarkerStyle(ROOT.kFullCircle)
+
+            # Let's make the best fit line red
+            funclist = graph.GetListOfFunctions()
+            for f in funclist:
+                f.SetLineColor(ROOT.kRed)
+
+            # First draw, needed in order to access the axis labels etc
             graph.Draw('ap')
             graph.GetYaxis().SetTitle('Yield')
             try:
@@ -194,6 +201,10 @@ class CorrelationPlotter:
 
             # Draw again (this is the pretty one!)
             graph.Draw('ap')
+            # The function is drawn, but underneath the points.
+            # Let's put it on top
+            for f in funclist:
+                f.Draw('same')
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
             ROOT.ATLASLabel(0.6,0.9,"Internal")
