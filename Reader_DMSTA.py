@@ -156,8 +156,9 @@ class DMSTAReader:
 
                 analysisSR = datum.name
 
-                truthyield = getattr(entry, '_'.join(['EW_ExpectedEvents',datum.branchname]))
-                trutherror = getattr(entry, '_'.join(['EW_ExpectedError',datum.branchname]))
+                # Get the yield from the official samples
+                truthyield = getattr(entry, '_'.join(['EWOff_ExpectedEvents',datum.branchname]))
+                trutherror = getattr(entry, '_'.join(['EWOff_ExpectedError',datum.branchname]))
 
                 try:
                     datum.data[DSID]['yield'] = valueWithError(truthyield,trutherror)
@@ -376,6 +377,9 @@ class DMSTAReader:
             # SRobj.fitfunctions['LogCLs'] = funcfile.Get(shortSRname)
             # SRobj.fitfunctions['LogCLs'].SetName('fitfunc') # for later convenience
             SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
+
+            # Restrict the fit range to CLs < 0.1
+            SRobj.fitfunctions['LogCLs'].SetRange(-6, -1)
 
             SRobj.GoodFit = GoodFit
 

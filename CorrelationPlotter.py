@@ -110,7 +110,7 @@ class CorrelationPlotter:
                     self.__fitresults[graphkey] = self.FitGraph(graph, dataobj.fitfunctions[CLtype])
 
                     # Cache for later if this is a good fit or not
-                    graph.goodfit = (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
+                    graph.goodfit = self.__fitresults[graphkey] and (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
                     
     def SaveData(self, dirname):
         """Saves the graphs in a TFile called results.root,
@@ -249,6 +249,9 @@ class CorrelationPlotter:
             for iplot in range(len(paramplots)):
                 paramplots[iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
 
+            # Check if we have any data at all
+            if self.__fitresults[analysisSR] is None:
+                continue
 
             if self.__fitresults[analysisSR].Ndf():
                 chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
@@ -301,7 +304,9 @@ class CorrelationPlotter:
         for key,fitresult in sorted(self.__fitresults.items()):
 
             key = keyfmtstring%(key)
-            if fitresult.NPar() == 0:
+            if fitresult is None:
+                print '%s: No fit result'%(key)
+            elif fitresult.NPar() == 0:
                 print '%s: No free parameters'%(key)
             elif fitresult.NPar() == 1:
                 print '%s: %.4f +- %.2f %%'%(key,fitresult.Value(0),100.*fitresult.Error(0)/fitresult.Value(0))
@@ -312,7 +317,9 @@ class CorrelationPlotter:
 
     def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data.
-        If called before the graph is plotted and/or saved, the results are included in those steps."""
+        If called before the graph is plotted and/or saved, the results are included in those steps.
+        Returns None if the fit results do not exist at all.
+        """
 
         # If no fitting function is supplied, just bail
         if fitfunc is None: return
@@ -325,6 +332,11 @@ class CorrelationPlotter:
         print
         print 'INFO: Fitting',graph.GetName()
         fitresult = graph.Fit(fitfunc, "SRB")
+
+        # Some failures (eg no data) return a null object
+        if not fitresult.Get():
+            print 'ERROR: No fit object returned for %s'%(graph.GetName())
+            return None
 
         # A nonzero fit status indicates an error
         if fitresult.Status():
