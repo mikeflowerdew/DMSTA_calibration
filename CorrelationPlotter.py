@@ -144,7 +144,7 @@ class CorrelationPlotter:
                 continue
 
             # Regardless, just write out one function (should be good enough)
-            func = funclist[0]
+            func = funclist[0].Clone()
             func.SetName(analysisSR)
             
             # Set the function minimum to the first observed point
@@ -204,6 +204,14 @@ class CorrelationPlotter:
             # The function is drawn, but underneath the points.
             # Let's put it on top
             for f in funclist:
+                # Make sure we plot the whole function
+                if f.GetXmin() >= 0:
+                    # Linear
+                    f.SetRange(0,f.GetXmax())
+                else:
+                    # Logarithmic
+                    f.SetRange(f.GetXmin(),0)
+
                 f.Draw('same')
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
@@ -383,6 +391,11 @@ def PassArguments():
         action = "store_true",
         dest = "productcheck",
         help = "Run a consistency check on the 4L data")
+    parser.add_argument(
+        "--truthlevel",
+        action = "store_true",
+        dest = "truthlevel",
+        help = "Get yields from evgen rather than official MC")
 
     return parser.parse_args()
 
@@ -440,12 +453,15 @@ if __name__ == '__main__':
         from Reader_DMSTA import DMSTAReader
 
         reader = DMSTAReader()
-        data = reader.ReadFiles()
-        plotdir = 'plots'
+        data = reader.ReadFiles(not cmdlinearguments.truthlevel)
+        if cmdlinearguments.truthlevel:
+            plotdir = 'plots_privateMC'
+        else:
+            plotdir = 'plots_officialMC'
 
     if 'data' in dir():
         plotter = CorrelationPlotter(data)
         plotter.MakeCorrelations()
-        plotter.PlotData(plotdir)
         plotter.SaveData(plotdir)
+        plotter.PlotData(plotdir)
 

@@ -49,8 +49,10 @@ class DMSTAReader:
         self.__dslist = DSlist
         self.__DSIDdict = {} # Formed from the DSlist in a bit
         
-    def ReadFiles(self):
+    def ReadFiles(self, officialMC=True):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
+        The flag sets whether the truth yields are taken from the official MC (default)
+        or the original private evgen.
         """
 
         # This is what we want to return
@@ -68,7 +70,7 @@ class DMSTAReader:
             result = self.ReadCLValues(result, analysis)
 
         # Then add the yields
-        result = self.ReadYields(result)
+        result = self.ReadYields(result, officialMC)
 
         # Keep warning/info messages from different sources separate
         print
@@ -111,7 +113,7 @@ class DMSTAReader:
 
         return
 
-    def ReadYields(self, data):
+    def ReadYields(self, data, officialMC=True):
         """Reads the model yields from the given ntuple file.
         The data argument should be an already-populated list of SignalRegion instances.
         """
@@ -132,6 +134,8 @@ class DMSTAReader:
             return result
         
         tree = yieldfile.Get('susy')
+
+        branchprefix = 'EWOff' if officialMC else 'EW'
 
         # Quick & dirty optimisation of what to read, as the tree is big
         tree.SetBranchStatus('*', 0)
@@ -157,8 +161,8 @@ class DMSTAReader:
                 analysisSR = datum.name
 
                 # Get the yield from the official samples
-                truthyield = getattr(entry, '_'.join(['EWOff_ExpectedEvents',datum.branchname]))
-                trutherror = getattr(entry, '_'.join(['EWOff_ExpectedError',datum.branchname]))
+                truthyield = getattr(entry, '_'.join([branchprefix,'ExpectedEvents',datum.branchname]))
+                trutherror = getattr(entry, '_'.join([branchprefix,'ExpectedError',datum.branchname]))
 
                 try:
                     datum.data[DSID]['yield'] = valueWithError(truthyield,trutherror)
@@ -378,8 +382,12 @@ class DMSTAReader:
             # SRobj.fitfunctions['LogCLs'].SetName('fitfunc') # for later convenience
             SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
 
-            # Restrict the fit range to CLs < 0.1
-            SRobj.fitfunctions['LogCLs'].SetRange(-6, -1)
+            # Restrict the fit range to small CLs values
+            SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.5)
+
+            # Special case(s)
+            if 'SR0Z' in SRobj.name:
+                SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
 
             SRobj.GoodFit = GoodFit
 
