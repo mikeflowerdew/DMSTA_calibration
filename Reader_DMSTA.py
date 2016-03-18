@@ -352,6 +352,8 @@ class DMSTAReader:
             print 'MJF: checking fit for',graph.GetName()
     
             fitfunc = graph.GetFunction('fitfunc')
+            if not fitfunc:
+                return False
     
             # Compare the error of the log coefficient to its value
             normcoeff = valueWithError(fitfunc.GetParameter(0),fitfunc.GetParError(0))
@@ -361,6 +363,44 @@ class DMSTAReader:
             print 'Success!'
             # Leave space for additional criteria if I need them
             return True
+
+        def FitErrorGraph(graph):
+            """Extracts the function fitted to the graph,
+            and creates a TGraphErrors object to represent the +-1 sigma band of the fit.
+            Whoever calls this function should give the graph a sensible name.
+            If no fit function can be found, the method returns None."""
+
+            fitfunc = graph.GetFunction('fitfunc')
+            if not fitfunc:
+                return None
+
+            result = ROOT.TGraphErrors()
+
+            # I haven't found a generic way to do this,
+            # so I'll use the knowledge that this is really a one-parameter function
+            normfactor = fitfunc.GetParameter(0)
+            if not normfactor:
+                return
+
+            # Store the fractional error for convenience later
+            normerror = fitfunc.GetParError(0)/normfactor
+
+            # Loop over the function range in regular steps
+            xmin = fitfunc.GetXmin()
+            xmax = fitfunc.GetXmax()
+            npx  = fitfunc.GetNpx()
+            stepsize = (xmax-xmin)/(npx-1)
+
+            for ipoint in range(npx):
+
+                xval = xmin + ipoint*stepsize
+                yval = fitfunc.Eval(xval)
+                yerr = normerror*yval
+
+                result.SetPoint(ipoint, xval, yval)
+                result.SetPointError(ipoint, 0, yerr)
+
+            return result
 
         # Extract HistFitter curve from the root file (FIXME: unconfigurable)
         funcfile = ROOT.TFile.Open('HistFitter/CLsFunctions_logCLs.root')
@@ -375,7 +415,7 @@ class DMSTAReader:
             graph = funcfile.Get(shortSRname+'_graph')
 
             # FIXME: hard-coded -6...
-            SRobj.fitfunctions['LogCLs'] = ROOT.TF1('fitfunc', lambda x,p: p[0]*graph.Eval(x[0]), -6, 0, 1)
+            SRobj.fitfunctions['LogCLs'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
 
             # Extract the TF1 object - does not work.
             # SRobj.fitfunctions['LogCLs'] = funcfile.Get(shortSRname)
@@ -390,6 +430,7 @@ class DMSTAReader:
                 SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
 
             SRobj.GoodFit = GoodFit
+            SRobj.FitErrorGraph = FitErrorGraph
 
         else:
 

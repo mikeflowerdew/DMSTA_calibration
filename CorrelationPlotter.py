@@ -111,7 +111,8 @@ class CorrelationPlotter:
 
                     # Cache for later if this is a good fit or not
                     graph.goodfit = self.__fitresults[graphkey] and (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
-                    
+                    graph.fiterrorgraph = dataobj.FitErrorGraph(graph)
+
     def SaveData(self, dirname):
         """Saves the graphs in a TFile called results.root,
         and a separate summary of the good fit results in calibration.root"""
@@ -196,12 +197,19 @@ class CorrelationPlotter:
             else:
                 # Log(CL) scale
                 assert(graph.GetXaxis().GetXmax() <= 0)
-                graph.GetXaxis().SetLimits(graph.GetXaxis().GetXmin(),0)
+                # Zoom out to a consistent range if needed
+                xmin = min([graph.GetXaxis().GetXmin(), -6])
+                graph.GetXaxis().SetLimits(xmin,0)
                 doLogX = False
 
             # Draw again (this is the pretty one!)
             graph.Draw('ap')
-            # The function is drawn, but underneath the points.
+            if graph.fiterrorgraph:
+                graph.fiterrorgraph.SetMarkerSize(0)
+                graph.fiterrorgraph.SetFillColorAlpha(ROOT.kYellow, 0.35)
+                graph.fiterrorgraph.Draw('same3')
+
+            # The fit function is drawn, but underneath the points.
             # Let's put it on top
             for f in funclist:
                 # Make sure we plot the whole function
@@ -213,6 +221,11 @@ class CorrelationPlotter:
                     f.SetRange(f.GetXmin(),0)
 
                 f.Draw('same')
+
+                printy = 0.9 # Start position for listing the fit parameters
+                for ipar in range(f.GetNpar()):
+                    printy -= 0.05
+                    ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
             ROOT.ATLASLabel(0.6,0.9,"Internal")
@@ -297,8 +310,9 @@ class CorrelationPlotter:
         for iplot in range(len(paramplots)):
             paramplots[iplot].Draw()
             ROOT.ATLASLabel(0.2,0.95,"Internal")
+            self.__canvas.Print('/'.join([outdir,'param%i.pdf('%(iplot)]))
             self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,'param%i.pdf'%(iplot)]))
+            self.__canvas.Print('/'.join([outdir,'param%i.pdf)'%(iplot)]))
 
         # Reset the canvas
         self.__canvas.SetBottomMargin(oldmargin)
