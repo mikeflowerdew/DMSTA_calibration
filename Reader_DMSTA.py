@@ -357,7 +357,7 @@ class DMSTAReader:
     
             # Compare the error of the log coefficient to its value
             normcoeff = valueWithError(fitfunc.GetParameter(0),fitfunc.GetParError(0))
-            if abs(normcoeff.error) > 0.5*abs(normcoeff.value):
+            if abs(normcoeff.error) > 0.2*abs(normcoeff.value):
                 return False
 
             print 'Success!'
@@ -423,11 +423,14 @@ class DMSTAReader:
             SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
 
             # Restrict the fit range to small CLs values
-            SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.5)
+            # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.5)
+            SRobj.fitfunctions['LogCLs'].xmin = -6.
+            SRobj.fitfunctions['LogCLs'].xmax = -0.5
 
             # Special case(s)
             if 'SR0Z' in SRobj.name:
-                SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
+                # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
+                SRobj.fitfunctions['LogCLs'].xmax = -0.6
 
             SRobj.GoodFit = GoodFit
             SRobj.FitErrorGraph = FitErrorGraph

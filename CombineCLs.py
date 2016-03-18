@@ -545,6 +545,11 @@ if __name__ == '__main__':
         type = int,
         dest = "nmodels",
         help = "Only analyse N models (for testing)")
+    parser.add_argument(
+        "--truthlevel",
+        action = "store_true",
+        dest = "truthlevel",
+        help = "Get yields from evgen rather than official MC")
     cmdlinearguments = parser.parse_args()
 
     import ROOT
@@ -558,12 +563,17 @@ if __name__ == '__main__':
     subdirname = cmdlinearguments.strategy
     if cmdlinearguments.truncate:
         subdirname += 'Truncate'
+    if cmdlinearguments.truthlevel:
+        subdirname += '_privateMC'
+    else:
+        subdirname += '_officialMC'
     outdirname = '/'.join(['results',subdirname])
     if cmdlinearguments.nmodels:
         outdirname += '_test'
 
+    CLsdir = 'plots_privateMC' if cmdlinearguments.truthlevel else 'plots_officialMC'
     obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
-                   'plots/calibration.root')
+                   '/'.join([CLsdir,'calibration.root']))
     if cmdlinearguments.all:
         obj.strategy = cmdlinearguments.strategy
         obj.truncate = cmdlinearguments.truncate

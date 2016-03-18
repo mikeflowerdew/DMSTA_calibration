@@ -136,6 +136,7 @@ class CorrelationPlotter:
 
             # Use the result we cached in MakeCorrelations to decide if we store this one
             if not graph.goodfit:
+                print 'INFO in SaveData: %s rejected'%(analysisSR)
                 continue
             
             funclist = graph.GetListOfFunctions()
@@ -150,7 +151,14 @@ class CorrelationPlotter:
             
             # Set the function minimum to the first observed point
             xmin = min([graph.GetX()[i] for i in range(graph.GetN())])
-            func.SetRange(xmin,func.GetXmax())
+            # For the log-scale version, I have to set the maximum to zero now,
+            # or else it's not saved
+            if xmin >=0:
+                # Linear
+                func.SetRange(xmin,func.GetXmax())
+            else:
+                # Logarithmic
+                func.SetRange(max([xmin,-6]),0)
             
             func.Write()
 
@@ -213,12 +221,12 @@ class CorrelationPlotter:
             # Let's put it on top
             for f in funclist:
                 # Make sure we plot the whole function
-                if f.GetXmin() >= 0:
-                    # Linear
-                    f.SetRange(0,f.GetXmax())
-                else:
-                    # Logarithmic
-                    f.SetRange(f.GetXmin(),0)
+#                 if f.GetXmin() >= 0:
+#                     # Linear
+#                     f.SetRange(0,f.GetXmax())
+#                 else:
+#                     # Logarithmic
+#                     f.SetRange(f.GetXmin(),0)
 
                 f.Draw('same')
 
@@ -253,6 +261,10 @@ class CorrelationPlotter:
             # Reset to linear scale
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
+
+            # If I don't delete the graphs now, the job ends with a seg fault
+            # Strange, but true!
+            graph.Delete()
 
         # Now plot some summary fit results
         chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
@@ -353,7 +365,38 @@ class CorrelationPlotter:
         # S: Returns full fit result
         print
         print 'INFO: Fitting',graph.GetName()
-        fitresult = graph.Fit(fitfunc, "SRB")
+
+        # The next bit was all part of a desperate attempt to get
+        # the range -0.5 < log(CLs) < 0.0 saved properly.
+        # With the function clone a few lines down, I'm not sure
+        # it's really needed any more.
+        funcmin = fitfunc.GetXmin()
+        funcmax = fitfunc.GetXmax()
+        try:
+            xmin = fitfunc.xmin
+        except AttributeError:
+            xmin = fitfunc.GetXmin()
+        try:
+            xmax = fitfunc.xmax
+        except AttributeError:
+            xmax = fitfunc.GetXmax()
+
+        fitresult = graph.Fit(fitfunc, "SRB", '', xmin, xmax)
+        finalfunc = graph.GetFunction(fitfunc.GetName())
+        if finalfunc:
+
+            # The only way I can find to properly store the region
+            # -0.5 < log(CLs) < 0.0 is to clone the original function.
+            # It really seems as if this part of the function is lost during the fit...?
+            newfunc = fitfunc.Clone()
+            for iparam in range(newfunc.GetNpar()):
+                newfunc.SetParameter(iparam, finalfunc.GetParameter(iparam))
+                newfunc.SetParError(iparam, finalfunc.GetParError(iparam))
+            graph.GetListOfFunctions().Clear()
+            # finalfunc.SetName(finalfunc.GetName()+'_old')
+            graph.GetListOfFunctions().AddFirst(newfunc)
+            assert len(graph.GetListOfFunctions()) == 1
+            # finalfunc.SetRange(funcmin,funcmax)
 
         # Some failures (eg no data) return a null object
         if not fitresult.Get():
