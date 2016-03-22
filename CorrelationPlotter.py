@@ -110,8 +110,9 @@ class CorrelationPlotter:
                     self.__fitresults[graphkey] = self.FitGraph(graph, dataobj.fitfunctions[CLtype])
 
                     # Cache for later if this is a good fit or not
-                    graph.goodfit = (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
-                    
+                    graph.goodfit = self.__fitresults[graphkey] and (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
+                    graph.fiterrorgraph = dataobj.FitErrorGraph(graph)
+
     def SaveData(self, dirname):
         """Saves the graphs in a TFile called results.root,
         and a separate summary of the good fit results in calibration.root"""
@@ -135,6 +136,7 @@ class CorrelationPlotter:
 
             # Use the result we cached in MakeCorrelations to decide if we store this one
             if not graph.goodfit:
+                print 'INFO in SaveData: %s rejected'%(analysisSR)
                 continue
             
             funclist = graph.GetListOfFunctions()
@@ -144,12 +146,19 @@ class CorrelationPlotter:
                 continue
 
             # Regardless, just write out one function (should be good enough)
-            func = funclist[0]
+            func = funclist[0].Clone()
             func.SetName(analysisSR)
             
             # Set the function minimum to the first observed point
             xmin = min([graph.GetX()[i] for i in range(graph.GetN())])
-            func.SetRange(xmin,func.GetXmax())
+            # For the log-scale version, I have to set the maximum to zero now,
+            # or else it's not saved
+            if xmin >=0:
+                # Linear
+                func.SetRange(xmin,func.GetXmax())
+            else:
+                # Logarithmic
+                func.SetRange(max([xmin,-6]),0)
             
             func.Write()
 
@@ -170,8 +179,15 @@ class CorrelationPlotter:
 
         for analysisSR,graph in self.__correlations.items():
 
-            graph.SetMarkerSize(2)
+            graph.SetMarkerSize(1)
             graph.SetMarkerStyle(ROOT.kFullCircle)
+
+            # Let's make the best fit line red
+            funclist = graph.GetListOfFunctions()
+            for f in funclist:
+                f.SetLineColor(ROOT.kRed)
+
+            # First draw, needed in order to access the axis labels etc
             graph.Draw('ap')
             graph.GetYaxis().SetTitle('Yield')
             try:
@@ -179,9 +195,45 @@ class CorrelationPlotter:
             except AttributeError:
                 # Should not happen, this is just in case
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
+
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
-            graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
+            # Check if the x-axis goes negative (ie log(CLs) vs CLs)
+            if graph.GetXaxis().GetXmin() >= 0:
+                # Linear CL scale
+                graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
+                doLogX = True
+            else:
+                # Log(CL) scale
+                assert(graph.GetXaxis().GetXmax() <= 0)
+                # Zoom out to a consistent range if needed
+                xmin = min([graph.GetXaxis().GetXmin(), -6])
+                graph.GetXaxis().SetLimits(xmin,0)
+                doLogX = False
+
+            # Draw again (this is the pretty one!)
             graph.Draw('ap')
+            if graph.fiterrorgraph:
+                graph.fiterrorgraph.SetMarkerSize(0)
+                graph.fiterrorgraph.SetFillColorAlpha(ROOT.kYellow, 0.35)
+                graph.fiterrorgraph.Draw('same3')
+
+            # The fit function is drawn, but underneath the points.
+            # Let's put it on top
+            for f in funclist:
+                # Make sure we plot the whole function
+#                 if f.GetXmin() >= 0:
+#                     # Linear
+#                     f.SetRange(0,f.GetXmax())
+#                 else:
+#                     # Logarithmic
+#                     f.SetRange(f.GetXmin(),0)
+
+                f.Draw('same')
+
+                printy = 0.9 # Start position for listing the fit parameters
+                for ipar in range(f.GetNpar()):
+                    printy -= 0.05
+                    ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
 
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
             ROOT.ATLASLabel(0.6,0.9,"Internal")
@@ -189,21 +241,30 @@ class CorrelationPlotter:
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf(']))
 
             # Try some variations with log scales
-            self.__canvas.SetLogx()
-            self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
+            if doLogX:
+                self.__canvas.SetLogx()
+                self.__canvas.SetLogy()
+                self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy()
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
-            self.__canvas.SetLogx()
-            self.__canvas.SetLogy(0)
-            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf)']))
+            if doLogX:
+                self.__canvas.SetLogx()
+                self.__canvas.SetLogy(0)
+                self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
+
+            # Close the file
+            self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf]']))
 
             # Reset to linear scale
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy(0)
+
+            # If I don't delete the graphs now, the job ends with a seg fault
+            # Strange, but true!
+            graph.Delete()
 
         # Now plot some summary fit results
         chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
@@ -221,6 +282,9 @@ class CorrelationPlotter:
             for iplot in range(len(paramplots)):
                 paramplots[iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
 
+            # Check if we have any data at all
+            if self.__fitresults[analysisSR] is None:
+                continue
 
             if self.__fitresults[analysisSR].Ndf():
                 chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
@@ -258,15 +322,38 @@ class CorrelationPlotter:
         for iplot in range(len(paramplots)):
             paramplots[iplot].Draw()
             ROOT.ATLASLabel(0.2,0.95,"Internal")
+            self.__canvas.Print('/'.join([outdir,'param%i.pdf('%(iplot)]))
             self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,'param%i.pdf'%(iplot)]))
+            self.__canvas.Print('/'.join([outdir,'param%i.pdf)'%(iplot)]))
 
         # Reset the canvas
         self.__canvas.SetBottomMargin(oldmargin)
 
+        print
+        print '======= Final summary printout'
+
+        keylength = max([len(x) for x in self.__fitresults.keys()])
+        keyfmtstring = '%%%is'%(keylength) # Yay, formatting the format string!
+
+        for key,fitresult in sorted(self.__fitresults.items()):
+
+            key = keyfmtstring%(key)
+            if fitresult is None:
+                print '%s: No fit result'%(key)
+            elif fitresult.NPar() == 0:
+                print '%s: No free parameters'%(key)
+            elif fitresult.NPar() == 1:
+                print '%s: %.4f +- %.2f %%'%(key,fitresult.Value(0),100.*fitresult.Error(0)/fitresult.Value(0))
+            else:
+                print '%s:'%(key)
+                for i in range(fitresult.NPar()):
+                    print '  Par %i: %.4f +- %.2f %%'%(i,fitresult.Value(i),100.*fitresult.Error(i)/fitresult.Value(i))
+
     def FitGraph(self, graph, fitfunc):
         """Function for fitting the CL calibration data.
-        If called before the graph is plotted and/or saved, the results are included in those steps."""
+        If called before the graph is plotted and/or saved, the results are included in those steps.
+        Returns None if the fit results do not exist at all.
+        """
 
         # If no fitting function is supplied, just bail
         if fitfunc is None: return
@@ -278,7 +365,43 @@ class CorrelationPlotter:
         # S: Returns full fit result
         print
         print 'INFO: Fitting',graph.GetName()
-        fitresult = graph.Fit(fitfunc, "SRB")
+
+        # The next bit was all part of a desperate attempt to get
+        # the range -0.5 < log(CLs) < 0.0 saved properly.
+        # With the function clone a few lines down, I'm not sure
+        # it's really needed any more.
+        funcmin = fitfunc.GetXmin()
+        funcmax = fitfunc.GetXmax()
+        try:
+            xmin = fitfunc.xmin
+        except AttributeError:
+            xmin = fitfunc.GetXmin()
+        try:
+            xmax = fitfunc.xmax
+        except AttributeError:
+            xmax = fitfunc.GetXmax()
+
+        fitresult = graph.Fit(fitfunc, "SRB", '', xmin, xmax)
+        finalfunc = graph.GetFunction(fitfunc.GetName())
+        if finalfunc:
+
+            # The only way I can find to properly store the region
+            # -0.5 < log(CLs) < 0.0 is to clone the original function.
+            # It really seems as if this part of the function is lost during the fit...?
+            newfunc = fitfunc.Clone()
+            for iparam in range(newfunc.GetNpar()):
+                newfunc.SetParameter(iparam, finalfunc.GetParameter(iparam))
+                newfunc.SetParError(iparam, finalfunc.GetParError(iparam))
+            graph.GetListOfFunctions().Clear()
+            # finalfunc.SetName(finalfunc.GetName()+'_old')
+            graph.GetListOfFunctions().AddFirst(newfunc)
+            assert len(graph.GetListOfFunctions()) == 1
+            # finalfunc.SetRange(funcmin,funcmax)
+
+        # Some failures (eg no data) return a null object
+        if not fitresult.Get():
+            print 'ERROR: No fit object returned for %s'%(graph.GetName())
+            return None
 
         # A nonzero fit status indicates an error
         if fitresult.Status():
@@ -325,6 +448,11 @@ def PassArguments():
         action = "store_true",
         dest = "productcheck",
         help = "Run a consistency check on the 4L data")
+    parser.add_argument(
+        "--truthlevel",
+        action = "store_true",
+        dest = "truthlevel",
+        help = "Get yields from evgen rather than official MC")
 
     return parser.parse_args()
 
@@ -382,13 +510,15 @@ if __name__ == '__main__':
         from Reader_DMSTA import DMSTAReader
 
         reader = DMSTAReader()
-        data = reader.ReadFiles()
-        plotdir = 'plots'
+        data = reader.ReadFiles(not cmdlinearguments.truthlevel)
+        if cmdlinearguments.truthlevel:
+            plotdir = 'plots_privateMC'
+        else:
+            plotdir = 'plots_officialMC'
 
     if 'data' in dir():
         plotter = CorrelationPlotter(data)
         plotter.MakeCorrelations()
-        plotter.PlotData(plotdir)
         plotter.SaveData(plotdir)
+        plotter.PlotData(plotdir)
 
-    

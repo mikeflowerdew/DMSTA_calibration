@@ -5,7 +5,7 @@
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-infile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_all.root')
+infile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_all_version3.root')
 intree = infile.Get('susy')
 
 intree.SetBranchStatus('*', 0)
@@ -30,6 +30,7 @@ intree.SetBranchStatus('tanb', 1)
 
 # Turn some specific categories of branches off again
 intree.SetBranchStatus('EWTruthAcc_*', 0)
+intree.SetBranchStatus('EWOffTruthAcc_*', 0)
 
 outfile_sim = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_sim.root', 'RECREATE')
 outtree_sim = intree.CloneTree(0)

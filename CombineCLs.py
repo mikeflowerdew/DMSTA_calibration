@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import pickle
+import pickle,math
 
 class CLs:
     """Small data class"""
@@ -13,7 +13,11 @@ class CLs:
             self.ratio = value.ratio
         except AttributeError:
             # Or maybe "value" is really just a value
-            self.value = value
+            # If "value" is negative, then it must be the log of a CLs value
+            if value > 0:
+                self.value = value
+            else:
+                self.value = math.pow(10,value)
             self.valid = True
             self.ratio = 1. # ratio to minimum CLs value
 
@@ -39,6 +43,24 @@ class CLs:
         # record the worst case, ie the smallest.
 
         return result
+
+    def __str__(self):
+
+        valuestr = '%.3f'%(self.value) if self.value > 0.01 else '%.2e'%(self.value)
+        if self.valid:
+            return valuestr
+        else:
+            return 'INVALID CLs value of %s'%valuestr
+
+class DoNotProcessError(Exception):
+    """Signals that there is something really wrong with the model,
+    and it should not be processed by the STAs.
+    """
+    pass
+#     def __init__(self, value):
+#         self.value = value
+#     def __str__(self):
+#         return repr(self.value)
 
 class Combiner:
 
@@ -73,7 +95,14 @@ class Combiner:
 
             # Retrieve the x-axis minimum, extend the range back down to zero
             thing.xmin = thing.GetXmin()
-            thing.SetRange(0,thing.GetXmax())
+            # Test for linear or log x-axis scale
+            if thing.xmin >= 0:
+                # Linear
+                thing.SetRange(0,thing.GetXmax())
+            else:
+                # Logarithmic
+                thing.SetRange(-6,0)
+                thing.xmin = math.pow(10,thing.xmin) # Convert back to linear scale
             
             # The graph names come with the CL type
             # separated from the analysis/SR by an underscore
@@ -86,20 +115,29 @@ class Combiner:
         return
 
     def __AnalyseModel(self, entry):
-        """Analyse a single entry in the ntuple."""
+        """Analyse a single entry in the ntuple.
+        This can raise a DoNotProcessError if the truth yields are not present."""
 
         results = {}
+        negativeYieldList = []
 
         for analysisSR,graph in self.CalibCurves.items():
 
             # slow, slow, slow, but I guess OK for now
             truthyield = getattr(entry, graph.branchname)
             # trutherror = getattr(entry, '_'.join(['EW_ExpectedError',analysisSR]))
+            if truthyield < 0:
+                negativeYieldList.append(analysisSR)
+                continue
 
             number = CLs(graph.GetX(truthyield))
 
-            if number.value >= 0.999*graph.GetXmax():
+            # If on a linear scale, check if the CLs value is within the valid range
+            if graph.GetXmin() >= 0 and number.value >= 0.999*graph.GetXmax():
                 # Too high
+                continue
+            # Similar range check for a log scale
+            if graph.GetXmin() < 0 and math.log10(number.value) >= graph.GetXmax():
                 continue
 
             results[analysisSR] = number
@@ -111,6 +149,51 @@ class Combiner:
                 
                 number.valid = False
                 number.ratio = number.value/graph.xmin
+
+            # print '%40s: %.3f events, CLs = %s, log(CLs) = %.2f'%(analysisSR,truthyield,number,math.log10(number.value))
+            # if number.value < 1e-3:
+            #     print number.value,graph.xmin,number.ratio
+
+        if negativeYieldList:
+
+            # Oh dear, we may have a problem, where a model with generated events
+            # has no recorded yield for one or more SRs
+
+            if len(negativeYieldList) == len(self.CalibCurves):
+
+                # Perfectly straightforward, no evgen yields were found, the model is completely broken
+                raise DoNotProcessError
+
+            else:
+
+                # There is a known issue with some 2tau yields
+                # If this is the only issue, the result I get should still be OK
+                # I also found one model with missing 3L results
+                onlyTau = True
+                only3L = True
+                for analysisSR in negativeYieldList:
+                    if 'TwoTau' not in analysisSR:
+                        onlyTau = False
+                    if 'ThreeLepton' not in analysisSR:
+                        only3L = False
+
+                if only3L:
+                    # We can't really drop the strongest search, so let's drop the model
+                    raise DoNotProcessError
+
+                if not onlyTau:
+                    # A bit clumsy, but I had this code already and it does the job
+                    try:
+                        assert len(negativeYieldList) == len(self.CalibCurves)
+                    except AssertionError:
+                        print '================ Oh dear, some SRs have yields and others don\'t!'
+                        print len(negativeYieldList),len(self.CalibCurves)
+                        for analysisSR,graph in self.CalibCurves.items():
+                            truthyield = getattr(entry, graph.branchname)
+                            print '%30s: %6.2f'%(analysisSR,truthyield)
+                        raise
+                # If only 2tau results were affected, carry on!
+                pass
 
         if results:
             resultkey = min(results, key=results.get) # keep a record of the best SR no matter what
@@ -143,8 +226,9 @@ class Combiner:
         
         return result,resultkey,results
 
-    def ReadNtuple(self, outdirname):
-        """Read all truth yields, record the estimated CLs values."""
+    def ReadNtuple(self, outdirname, Nmodels=None):
+        """Read all truth yields, record the estimated CLs values.
+        Use Nmodels to reduce the number of analysed models, for testing."""
 
         import os
         if not os.path.exists(outdirname):
@@ -192,10 +276,10 @@ class Combiner:
 
         # Output text file for the STAs
         outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
+        badmodelfile = open('/'.join([outdirname,'DoNotProcess.txt']), 'w')
 
-        import math
-
-        print 'Looping over %i events'%(tree.GetEntries())
+        print '%i models found in tree'%(tree.GetEntries())
+        imodel = 0 # Counter
 
         for entry in tree:
 
@@ -203,12 +287,22 @@ class Combiner:
             if modelName % 1000 == 0:
                 print 'On model %6i'%(modelName)
 
-            # Uncomment for testing
-            # if modelName > 3e4: break
+            if Nmodels is not None:
+                if imodel >= Nmodels: break
+                imodel += 1
 
-            CLresult,bestSR,CLresults = self.__AnalyseModel(entry)
+            if Nmodels is not None:
+                # Debug mode, essentially
+                print '============== Model',modelName
+
+            try:
+                CLresult,bestSR,CLresults = self.__AnalyseModel(entry)
+            except DoNotProcessError:
+                badmodelfile.write('%i\n'%(modelName))
+                continue
 
             outfile.write('%i,%6e\n'%(modelName,CLresult.value))
+
             CLsplot.Fill(CLresult.value)
             LogCLsplot.Fill(math.log10(CLresult.value))
             NSRplot.Fill(len(CLresults))
@@ -232,6 +326,7 @@ class Combiner:
                         ExclusionCount[k] = 1
 
         outfile.close()
+        badmodelfile.close()
         yieldfile.Close()
 
         # Save the results
@@ -319,11 +414,8 @@ class Combiner:
         SRcountFile = open('/'.join([dirname,'SRcount.pickle']))
         SRcount = pickle.load(SRcountFile)
         SRcountFile.close()
-        print SRcount
-        print SRcount.keys()
         blah = []
         for SR in SRcount.keys():
-            print SR
             if 'SR' in SR:
                 blah.append(SR)
 
@@ -369,10 +461,15 @@ class Combiner:
 
         # Next, 3L SR0a
         mySRs = [SR for SR in SRcount.keys() if 'SR0a' in SR]
-        for SR in sorted(mySRs):
-            # Find the bin number
-            whichone = int(SR.split('_')[-1])
-            latexfile.write('3$\\ell$ SR0$\\tau$a bin %i & \\num{%i} \\\\ \n'%(whichone,SRcount[SR]))
+        for ibin in range(1,21):
+            # See if we have a result for this bin
+            theSRs = [SR for SR in mySRs if SR.endswith('_%i'%(ibin))]
+            if len(theSRs) > 1:
+                print 'WARNING in WriteLatex: found %i SRs for SR0a bin %i'%(len(theSRs),ibin)
+                print theSRs
+            if theSRs:
+                SR = theSRs[0]
+                latexfile.write('3$\\ell$ SR0$\\tau$a bin %i & \\num{%i} \\\\ \n'%(ibin,SRcount[SR]))
 
         # Now the other 3L regions, if we have them
         mySRs = [SR for SR in SRcount.keys() if 'SR0b' in SR]
@@ -391,7 +488,7 @@ class Combiner:
         mySRs = [SR for SR in SRcount.keys() if 'FourLepton' in SR]
         for SR in sorted(mySRs):
             whichone = SR.split('_')[1]
-            latexfile.write('4$\\ell$ %s & \\num{%i} \\\\ \n'%(SR,SRcount[SR]))
+            latexfile.write('4$\\ell$ %s & \\num{%i} \\\\ \n'%(whichone,SRcount[SR]))
 
         # Have a break
         latexfile.write('\\midrule\n')
@@ -443,6 +540,16 @@ if __name__ == '__main__':
         action = 'store_true',
         dest = "truncate",
         help = "Truncate CLs values below 1e-6")
+    parser.add_argument(
+        "-n", "--nmodels",
+        type = int,
+        dest = "nmodels",
+        help = "Only analyse N models (for testing)")
+    parser.add_argument(
+        "--truthlevel",
+        action = "store_true",
+        dest = "truthlevel",
+        help = "Get yields from evgen rather than official MC")
     cmdlinearguments = parser.parse_args()
 
     import ROOT
@@ -456,14 +563,21 @@ if __name__ == '__main__':
     subdirname = cmdlinearguments.strategy
     if cmdlinearguments.truncate:
         subdirname += 'Truncate'
+    if cmdlinearguments.truthlevel:
+        subdirname += '_privateMC'
+    else:
+        subdirname += '_officialMC'
     outdirname = '/'.join(['results',subdirname])
+    if cmdlinearguments.nmodels:
+        outdirname += '_test'
 
+    CLsdir = 'plots_privateMC' if cmdlinearguments.truthlevel else 'plots_officialMC'
     obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
-                   'plots/calibration.root')
+                   '/'.join([CLsdir,'calibration.root']))
     if cmdlinearguments.all:
         obj.strategy = cmdlinearguments.strategy
         obj.truncate = cmdlinearguments.truncate
-        obj.ReadNtuple(outdirname)
+        obj.ReadNtuple(outdirname, cmdlinearguments.nmodels)
     obj.PlotSummary(outdirname)
     obj.LatexSummary(outdirname)
 

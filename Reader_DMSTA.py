@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from glob import glob
+import math
 from DataObject import SignalRegion
 from ValueWithError import valueWithError
 import ROOT
@@ -48,8 +49,10 @@ class DMSTAReader:
         self.__dslist = DSlist
         self.__DSIDdict = {} # Formed from the DSlist in a bit
         
-    def ReadFiles(self):
+    def ReadFiles(self, officialMC=True):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
+        The flag sets whether the truth yields are taken from the official MC (default)
+        or the original private evgen.
         """
 
         # This is what we want to return
@@ -67,7 +70,7 @@ class DMSTAReader:
             result = self.ReadCLValues(result, analysis)
 
         # Then add the yields
-        result = self.ReadYields(result)
+        result = self.ReadYields(result, officialMC)
 
         # Keep warning/info messages from different sources separate
         print
@@ -110,7 +113,7 @@ class DMSTAReader:
 
         return
 
-    def ReadYields(self, data):
+    def ReadYields(self, data, officialMC=True):
         """Reads the model yields from the given ntuple file.
         The data argument should be an already-populated list of SignalRegion instances.
         """
@@ -131,6 +134,8 @@ class DMSTAReader:
             return result
         
         tree = yieldfile.Get('susy')
+
+        branchprefix = 'EWOff' if officialMC else 'EW'
 
         # Quick & dirty optimisation of what to read, as the tree is big
         tree.SetBranchStatus('*', 0)
@@ -155,8 +160,9 @@ class DMSTAReader:
 
                 analysisSR = datum.name
 
-                truthyield = getattr(entry, '_'.join(['EW_ExpectedEvents',datum.branchname]))
-                trutherror = getattr(entry, '_'.join(['EW_ExpectedError',datum.branchname]))
+                # Get the yield from the official samples
+                truthyield = getattr(entry, '_'.join([branchprefix,'ExpectedEvents',datum.branchname]))
+                trutherror = getattr(entry, '_'.join([branchprefix,'ExpectedError',datum.branchname]))
 
                 try:
                     datum.data[DSID]['yield'] = valueWithError(truthyield,trutherror)
@@ -221,7 +227,7 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['CLs'])
+                obj = SignalRegion(analysisSR, ['LogCLs'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
@@ -250,7 +256,7 @@ class DMSTAReader:
                 datum = obj.AddData(modelname)
 
             if CLs and CLs > 0:
-                datum['CLs'] = CLs
+                datum['LogCLs'] = math.log10(CLs)
                 
         f.close() # Let's be tidy
 
@@ -264,7 +270,7 @@ class DMSTAReader:
         obj = next((x for x in data if x.name == analysisSR), None)
         if obj is None:
             # First time we've looked at this analysisSR
-            obj = SignalRegion(analysisSR, ['CLs'])
+            obj = SignalRegion(analysisSR, ['LogCLs'])
             data.append(obj)
 
             # Store the equivalent ntuple branch name for convenience later
@@ -312,7 +318,7 @@ class DMSTAReader:
                 datum = obj.AddData(modelpoint)
 
             if CLb and CLsb:
-                datum['CLs'] = CLsb/CLb
+                datum['LogCLs'] = math.log10(CLsb/CLb)
 
         f.close() # Let's be tidy
         
@@ -346,32 +352,89 @@ class DMSTAReader:
             print 'MJF: checking fit for',graph.GetName()
     
             fitfunc = graph.GetFunction('fitfunc')
+            if not fitfunc:
+                return False
     
             # Compare the error of the log coefficient to its value
-            logcoeff = valueWithError(fitfunc.GetParameter(1),fitfunc.GetParError(1))
-            if abs(logcoeff.error) > 0.5*abs(logcoeff.value):
+            normcoeff = valueWithError(fitfunc.GetParameter(0),fitfunc.GetParError(0))
+            if abs(normcoeff.error) > 0.2*abs(normcoeff.value):
                 return False
 
             print 'Success!'
             # Leave space for additional criteria if I need them
             return True
-    
-        SRobj.fitfunctions['CLs'] = ROOT.TF1('fitfunc','(x-1)++TMath::Log(x)++1')
-        SRobj.fitfunctions['CLs'].SetParameter(0,-10.)
-        SRobj.fitfunctions['CLs'].SetParLimits(0,-500,0)
-        SRobj.fitfunctions['CLs'].SetParameter(1,-10.)
-        SRobj.fitfunctions['CLs'].SetParLimits(1,-500,0)
-        SRobj.fitfunctions['CLs'].SetParLimits(2,0,500)
-        SRobj.fitfunctions['CLs'].SetRange(0,0.8)
-        SRobj.GoodFit = GoodFit
 
-        # Special case(s)
-        splitname = SRobj.name.split('_')
-        if len(splitname) > 2 and splitname[2] == 'SR0a':
-            if int(splitname[-1]) in [1,3,16]:
-                SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+        def FitErrorGraph(graph):
+            """Extracts the function fitted to the graph,
+            and creates a TGraphErrors object to represent the +-1 sigma band of the fit.
+            Whoever calls this function should give the graph a sensible name.
+            If no fit function can be found, the method returns None."""
 
-        # This one's a hopeless case till we have better evgen yields
-        # if splitname[-1] == 'SR0Z':
-        #     SRobj.fitfunctions['CLs'].SetRange(0,0.7)
+            fitfunc = graph.GetFunction('fitfunc')
+            if not fitfunc:
+                return None
 
+            result = ROOT.TGraphErrors()
+
+            # I haven't found a generic way to do this,
+            # so I'll use the knowledge that this is really a one-parameter function
+            normfactor = fitfunc.GetParameter(0)
+            if not normfactor:
+                return
+
+            # Store the fractional error for convenience later
+            normerror = fitfunc.GetParError(0)/normfactor
+
+            # Loop over the function range in regular steps
+            xmin = fitfunc.GetXmin()
+            xmax = fitfunc.GetXmax()
+            npx  = fitfunc.GetNpx()
+            stepsize = (xmax-xmin)/(npx-1)
+
+            for ipoint in range(npx):
+
+                xval = xmin + ipoint*stepsize
+                yval = fitfunc.Eval(xval)
+                yerr = normerror*yval
+
+                result.SetPoint(ipoint, xval, yval)
+                result.SetPointError(ipoint, 0, yerr)
+
+            return result
+
+        # Extract HistFitter curve from the root file (FIXME: unconfigurable)
+        funcfile = ROOT.TFile.Open('HistFitter/CLsFunctions_logCLs.root')
+
+        if funcfile and not funcfile.IsZombie():
+
+            # Extracting the TF1 object directly doesn't seem to work,
+            # as the normalisation parameter becomes fixed.
+            # So, extract the graph object instead and recreate the TF1.
+            # The real SR name is from "SR" to the end.
+            shortSRname = SRobj.name[SRobj.name.index('SR'):]
+            graph = funcfile.Get(shortSRname+'_graph')
+
+            # FIXME: hard-coded -6...
+            SRobj.fitfunctions['LogCLs'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
+
+            # Extract the TF1 object - does not work.
+            # SRobj.fitfunctions['LogCLs'] = funcfile.Get(shortSRname)
+            # SRobj.fitfunctions['LogCLs'].SetName('fitfunc') # for later convenience
+            SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
+
+            # Restrict the fit range to small CLs values
+            # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.5)
+            SRobj.fitfunctions['LogCLs'].xmin = -6.
+            SRobj.fitfunctions['LogCLs'].xmax = -0.5
+
+            # Special case(s)
+            if 'SR0Z' in SRobj.name:
+                # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
+                SRobj.fitfunctions['LogCLs'].xmax = -0.6
+
+            SRobj.GoodFit = GoodFit
+            SRobj.FitErrorGraph = FitErrorGraph
+
+        else:
+
+            print 'ERROR in Reader_DMSTA: could not open HistFitter file'

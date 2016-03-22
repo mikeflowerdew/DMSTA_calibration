@@ -1,0 +1,370 @@
+#!/bin/env python
+
+import ROOT, math
+
+class PaperResults:
+
+    __slots__ = {
+        'SR': '',
+        'Nbkg': None, # Could be a ValueWithError?
+        'NbkgErr': None, # Absolute error
+        'Ndata': None,
+        'Limit': None, # Model independent limit, to start the Nsig scan
+        }
+
+    def __init__(self):
+        
+        for k,v in self.__slots__.items():
+            setattr(self,k,v)
+
+    def isOK(self):
+        """Not a complete test, but a start"""
+
+        # Background systematic should be reasonable
+        try:
+            assert(self.NbkgErr/self.Nbkg < 1)
+        except: # Almost any error indicates a poor result
+            return False
+        
+        # SR string should not have spaces
+        try:
+            assert(' ' not in self.SR)
+        except: # Almost any error indicates a poor result
+            return False
+
+        # Data events should be an integer (dumb way to test, I know)
+        try:
+            assert(self.Ndata % 1 == 0)
+        except: # Almost any error indicates a poor result
+            return False
+
+        return self.SR and self.Nbkg and self.NbkgErr and isinstance(self.Ndata,int)
+
+# I want to run HistFitter within a subdirectory for safety
+from contextlib import contextmanager
+import os
+
+@contextmanager
+def cd(newdir):
+    prevdir = os.getcwd()
+    os.chdir(os.path.expanduser(newdir))
+    try:
+        yield
+    finally:
+        os.chdir(prevdir)
+
+def RunOneSearch(config, Nsig):
+    """config should be a PaperResults object,
+    which has all the info I need to set up a simple HistFitter 1-bin fit.
+    The procedure here follows one of the tutorial examples in HistFitter.
+    It's therefore a little bit convoluted...
+    """
+
+    if not config.isOK(): return None
+
+    testdir = config.SR
+    import os,shutil
+    if os.path.exists(testdir):
+        # Remove it, so we have a clean directory
+        shutil.rmtree(testdir)
+    os.makedirs(testdir)
+
+    # Use the context manager to handle the changing of directory
+    with cd(testdir):
+
+        # Warning: the internal logic of this is a bit hairy
+        # Be careful if you edit!
+
+        # ########################
+        # Step 0: Make sure we have everything we need
+
+        import shutil
+        shutil.copy('../HistFactorySchema.dtd', '.')
+
+        # ########################
+        # Step 1: Create an input file
+
+        modelfile = ROOT.TFile.Open('modelfile_%s.root'%(config.SR),'recreate')
+    
+        signalhist = ROOT.TH1F('signal','',1,0,1)
+        signalhist.Fill(0.5,Nsig)
+        signalhist.Write()
+    
+        backgroundhist = ROOT.TH1F('background','',1,0,1)
+        backgroundhist.Fill(0.5,config.Nbkg)
+        backgroundhist.Write()
+    
+        datahist = ROOT.TH1F('data','',1,0,1)
+        datahist.Fill(0.5,config.Ndata)
+        datahist.Write()
+    
+        modelfile.Close()
+    
+        # ########################
+        # Step 2: Create a couple of xml files
+        
+        # I was going to use ElementTree, but as writing the header
+        # is non-trivial and the files are short I'll just do this long-handed.
+
+        masterfile = open('master.xml', 'w')
+        masterfile.write('<!DOCTYPE Combination  SYSTEM "HistFactorySchema.dtd">\n')
+        masterfile.write('<Combination OutputFilePrefix="simple">\n')
+        masterfile.write('<Input>channel.xml</Input>\n')
+        masterfile.write('<Measurement Name="%s" Lumi="1." LumiRelErr="0.028" BinLow="0" BinHigh="2" >\n'%(config.SR))
+        masterfile.write('<POI>SigXsecOverSM</POI>\n')
+        masterfile.write('</Measurement>\n')
+        masterfile.write('</Combination>\n')
+        masterfile.close()
+
+        channelfile = open('channel.xml', 'w')
+        channelfile.write('<!DOCTYPE Channel  SYSTEM \'HistFactorySchema.dtd\'>\n')
+        channelfile.write('<Channel Name="channel1" InputFile="modelfile_%s.root" HistoName="" >\n'%(config.SR))
+        channelfile.write('<Data HistoName="data" HistoPath="" />\n')
+        channelfile.write('<Sample Name="signal" HistoPath="" HistoName="signal">\n')
+        channelfile.write('<NormFactor Name="SigXsecOverSM" Val="1" Low="0." High="5." Const="True" />\n')
+        channelfile.write('</Sample>\n')
+        channelfile.write('<Sample Name="background" HistoPath="" NormalizeByTheory="True" HistoName="background">\n')
+        channelfile.write('<OverallSys Name="syst2" Low="%.3f" High="%.3f"/>\n'%(1.-config.NbkgErr/config.Nbkg,1+config.NbkgErr/config.Nbkg))
+        channelfile.write('</Sample>\n')
+        channelfile.write('</Channel>\n')
+        channelfile.close()
+
+        # ########################
+        # Step 3: Create a workspace
+
+        ROOT.gSystem.Exec('hist2workspace master.xml')
+
+        # ########################
+        # Step 4: Open the workspace and run the fit
+
+        fitfile = ROOT.TFile.Open('simple_channel1_%s_model.root'%(config.SR))
+        workspace = fitfile.Get('channel1')
+        workspace.var('Lumi').setConstant()
+
+        # 0 = CPU clock
+        # 1 helps get reproducible results
+        ROOT.RooRandom.randomGenerator().SetSeed(1)
+
+        # Even though this (without the RooStats scope) is the WRONG function,
+        # It appears I need to acknowledge it before I can see the other one.
+        # Weird...
+        ROOT.get_Pvalue
+
+        # Leave alone except for:
+        # Third arg = number of toys
+        # Fourth arg = calculator type. 0=toys, 2=asymptotic
+        result = ROOT.RooStats.get_Pvalue(workspace, True, 5000, 2, 3)
+        result.Summary()
+
+        fitfile.Close()
+
+    try:
+        return result.GetCLs()
+    except:
+        return None
+
+def NSigStrategy(existingResults, SRobj, granularity=0.05, logCLs=True, logMin=-6):
+    """Returns a list of signal yield values to try,
+    given a list of (Nsig,CLs) tuples.
+    SRobj is a PaperResults object.
+    The granularity argument is the desired CLs separation - if larger
+    gaps are found then the function returns a list of yield values
+    to try and fill the gaps.
+    May return an empty list in case of error or no more samples needed.
+
+    The default is to populate log10(CLs) evenly between logMin and 0
+    (10^[logMin] < CLs < 1). If logCLs is False, then the function attempts
+    to populate CLs evenly between 0 and 1.
+    In both cases, the granularity sets the desired maximum separation between
+    neighbouring points.
+    Remember that the final TF1 has 100 points by default, so log granularities
+    much below 100/abs(logMin) and linear granularities much below 0.01 are pointless.
+    """
+
+    if not existingResults:
+        # Start with a simple list based on the model-independent limit
+        # Start with "high priority" runs close to exclusion.
+        return [scale*SRobj.Limit for scale in [1.0,0.5,2.0,0.25]]
+        
+    # Look through pairs of results for CLs values less than some threshold
+    # Neat trick from itertools!
+    from itertools import tee, izip
+    def pairwise(iterable):
+        "s -> (s0,s1), (s1,s2), (s2, s3), ..."
+        a, b = tee(iterable)
+        next(b, None)
+        return izip(a, b)
+
+    existingResults.sort()
+    # Special case to make sure we get to high values
+    if existingResults[0][1] < 0.999:
+        # Add a point corresponding to Yield=0 and CLs=1
+        existingResults.insert(0, (0,1) )
+
+    # Let's make sure we go low enough too
+    if logCLs and math.log10(existingResults[-1][1]) > logMin:
+        # I don't want to overshoot logMin by too much,
+        # as this can be very wasteful.
+
+        # If we're a long way from the end, just double the yield
+        if math.log10(existingResults[-1][1])/logMin < 0.5:
+            return [2.0*existingResults[-1][0]]
+
+        # So assume that the gradient in Yield vs log10(CLs) is constant
+        # and guesstimate the Yield I need from that.
+        # There should be no danger of existingResults having <2 elements.
+        DeltaCLs = math.log10(existingResults[-2][1]/existingResults[-1][1])
+        DeltaYield = existingResults[-1][0] - existingResults[-2][0]
+        CLsDistance = math.log10(existingResults[-1][1]) - (1.01*logMin) # Allow a little safety margin
+
+        # Linear extrapolation
+        YieldEstimate = existingResults[-1][0] + CLsDistance*DeltaYield/DeltaCLs
+
+        # The above estimate can sometimes overshoot.
+        # If the extrapolation is very big, just double the yield
+        YieldEstimate = min([YieldEstimate, 2.0*existingResults[-1][0]])
+
+        return [YieldEstimate]
+
+    if not logCLs and existingResults[-1][1] > granularity:
+        # Just increase by a factor of 2
+        # This might give a stupidly low CLs value,
+        # but on a linear scale this doesn't really matter too much
+        return [2.0*existingResults[-1][0]]
+
+    from pprint import pprint
+    print 'Results so far...'
+    pprint(existingResults)
+
+    for result0,result1 in pairwise(existingResults):
+
+        # How does the CLs difference (or its log) compare to our desired tolerance?
+        CLsDiff = abs(math.log10(result1[1]/result0[1])) if logCLs else abs(result1[1] - result0[1])
+        if CLsDiff < granularity:
+            # OK, move on
+            continue
+
+        # Break up the truth yield difference into sections,
+        # by comparing the CLsDiff to the requested granularity.
+        # Pretty dumb approach, should be conservative?
+        NsigDiff = abs(result1[0] - result0[0])
+        # How many segments do we need?
+        Nsteps = math.ceil(CLsDiff/granularity)
+        StepSize = NsigDiff/Nsteps
+        
+        # result0 *should* have the smallest Nsig value, but just in case...
+        try: assert(result1[0] > result0[0])
+        except AssertionError:
+            pprint(existingResults)
+            raise
+
+        MinNsig = result0[0]
+
+        # Now, return our list of suggestions
+        # Of course MinNsig+Nsteps*StepSize is intentially not included ;)
+        return [MinNsig+i*StepSize for i in range(1,int(Nsteps))]
+
+    # If we get here, I guess we're done!
+    return []
+
+if __name__=='__main__':
+
+    ROOT.gROOT.SetBatch(True)
+    ROOT.gROOT.LoadMacro("AtlasStyle.C")
+    ROOT.SetAtlasStyle()
+    ROOT.gROOT.LoadMacro("AtlasUtils.C") 
+    ROOT.gROOT.LoadMacro("AtlasLabels.C") 
+    ROOT.gSystem.Load('libSusyFitter.so')
+
+    # Read in some analyses!
+    datafile = open('PaperSRData.dat')
+
+    configlist = []
+    thingsToWrite = [] # Keeps persistent objects in memory
+
+    # Maybe promote these to a command line option...?
+    doLogCLs = True
+    logMin = -6
+
+    for line in datafile:
+        if line.startswith('#'): continue
+        splitline = line.split()
+        if len(splitline) < 5: continue
+
+        config = PaperResults()
+        try:
+            config.SR      = splitline[0]
+            config.Ndata   = int(splitline[1])
+            config.Nbkg    = float(splitline[2])
+            config.NbkgErr = float(splitline[3])
+            config.Limit   = float(splitline[4])
+        except:
+            continue
+
+        # Not sure I'll actually need this...
+        configlist.append(config)
+
+        # Config looks OK - let's run HistFitter!
+        YieldOrder = [] # A record so I can see how the search progressed
+        YieldValues = NSigStrategy([], config, logCLs=doLogCLs, logMin=logMin) # First list of variables
+        YieldOrder.append([v for v in YieldValues])
+        results = []
+
+        while YieldValues:
+
+            # Pick up the first yield value
+            Nsig = YieldValues.pop(0)
+            
+            if not config.isOK():
+                print 'CONFIG NOT OK!!!!'
+                
+
+            CLs = RunOneSearch(config, Nsig)
+            if CLs is not None:
+                results.append( (Nsig,CLs) )
+            
+            # If we're out of values, give a chance to replenish them
+            if not YieldValues:
+                YieldValues = NSigStrategy(results, config, logCLs=doLogCLs, logMin=logMin)
+                YieldOrder.append([v for v in YieldValues])
+
+            # Crude attempt to avoid an infinite loop
+            if len(YieldOrder) > 100:
+                print 'Cutting out because I reached %i iterations'%(len(YieldOrder))
+                break
+
+        from pprint import pprint
+        print '============= Printing results for',config.SR
+        pprint(results)
+        print '============= Printing the Yield search pattern for',config.SR
+        pprint(YieldOrder)
+
+        graph = ROOT.TGraph()
+        graph.SetName(config.SR+'_graph')
+        results.sort() # Just in case
+        for Nsig,CLs in results:
+            graph.SetPoint(graph.GetN(),math.log10(CLs) if doLogCLs else CLs,Nsig)
+
+        # Amazingly this works!
+        if doLogCLs:
+            function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), logMin, 0, 1)
+        else:
+            function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), 0, 1, 1)
+        function.SetParameter(0,1) # Default "normalisation"
+
+        thingsToWrite.append(graph.Clone())
+        thingsToWrite.append(function.Clone())
+
+        # Store a copy in case later SRs fail
+        outfilename = 'result_logCLs.root' if doLogCLs else 'result_linearCLs.root'
+        outfile = ROOT.TFile.Open('/'.join([config.SR,outfilename]),'RECREATE')
+        graph.Write()
+        function.Write()
+        outfile.Close()
+
+    # Store TGraphs in an output file
+    outfilename = 'CLsFunctions_logCLs.root' if doLogCLs else 'CLsFunctions_linearCLs.root'
+    outfile = ROOT.TFile.Open(outfilename,'RECREATE')
+    for thing in thingsToWrite:
+        thing.Write()
+    outfile.Close()
