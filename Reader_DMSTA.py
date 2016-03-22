@@ -23,7 +23,7 @@ class DMSTAReader:
     # Gah, way too many arguments - could fix with slots if I have time
     def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_sim.root',
                  dirprefix='Data_', fileprefix='pMSSM_STA_table_EWK_', filesuffix='.dat',
-                 DSlist='Data_Yields/D3PDs.txt'):
+                 DSlist='Data_Yields/D3PDs.txt', HFfile='HistFitter/CLsFunctions_logCLs.root'):
         """
         Set up to read input files from several directories.
         The yield ntuple path is stated explicitly, as is the DS list (for mapping the model ID to the DS ID).
@@ -39,7 +39,10 @@ class DMSTAReader:
         If no files of the above pattern are found for a particular directory, but files ending .yaml are found,
         Then the reader assumes a format like
         SR: [yield,CLs_obs,CLs_exp]
-        At the time of writing, this is used by the 2L search
+        At the time of writing, this is used by the 2L search.
+
+        The HFfile describes where the HistFitter calibration functions are to be found.
+        If set to None, '', etc, then no fit function will be associated with the objects.
         """
         
         self.__yieldfile = yieldfile
@@ -47,6 +50,7 @@ class DMSTAReader:
         self.__fileprefix = fileprefix
         self.__filesuffix = filesuffix
         self.__dslist = DSlist
+        self.__hffile = HFfile
         self.__DSIDdict = {} # Formed from the DSlist in a bit
         
     def ReadFiles(self, officialMC=True):
@@ -402,8 +406,11 @@ class DMSTAReader:
 
             return result
 
-        # Extract HistFitter curve from the root file (FIXME: unconfigurable)
-        funcfile = ROOT.TFile.Open('HistFitter/CLsFunctions_logCLs.root')
+        # Check first if we have anything to configure
+        if not self.__hffile:
+            return
+        # Extract HistFitter curve from the root file
+        funcfile = ROOT.TFile.Open(self.__hffile)
 
         if funcfile and not funcfile.IsZombie():
 

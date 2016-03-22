@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-import ROOT
+import ROOT,math
 
 class CLsData:
     """Simple class to keep all of the CLs values together"""
@@ -62,10 +62,11 @@ class ProductCheck:
         self.__SRorder = [thing.name for thing in self.__perSRdata]
 
         # Read the combined data
-        # There's no point in reading the yields!
+        # There's no point in reading the yields or HistFitter input!
         combinationReader = DMSTAReader(
             yieldfile = None,
             DSlist = None,
+            HFfile = None,
             )
         combinationReader.analysisdict = {
             analysis+'_combination': DMSTAReader.analysisdict[analysis],
@@ -110,12 +111,12 @@ class ProductCheck:
             
             for modelID,info in CombData.data.items():
 
-                result = CLsData(info['CLs'])
+                result = CLsData(math.pow(10, info['LogCLs']))
 
                 for index in SRindices:
                     try:
                         SRdata = self.__perSRdata[index]
-                        CLs = SRdata.data[modelID]['CLs']
+                        CLs = math.pow(10, SRdata.data[modelID]['LogCLs'])
                         result.SRCLs[SRdata.name] = CLs
                     except KeyError:
                         # May have no results in that model for that SR
@@ -300,6 +301,38 @@ class ProductCheck:
         # 4: Three smallest
         fname = '/'.join([outdir,'threesmallest_round_1em6.pdf'])
         graphs = [self.__CLsMatchPlot(name,threesmallest,roundUp_1em6) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
+        # Try Fischer's method
+        def Fischer(indict, nvalues=None):
+            chi2 = -2.*math.log(reduce(lambda x,y: x*y, sorted(indict.values())[:nvalues], 1))
+            Ndof = 2*len(indict) if nvalues is None else 2*min([nvalues,len(indict)])
+            return ROOT.TMath.Prob(chi2,Ndof)
+        # Create the output file and input data
+        fname = '/'.join([outdir,'Fischer.pdf'])
+        graphs = [self.__CLsMatchPlot(name,Fischer) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
+        def Fischer1(indict):
+            "Should be the same as smallest (for validation)"
+            return Fischer(indict,1)
+        # Create the output file and input data
+        fname = '/'.join([outdir,'Fischer1.pdf'])
+        graphs = [self.__CLsMatchPlot(name,Fischer1) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
+        def Fischer2(indict):
+            return Fischer(indict,2)
+        # Create the output file and input data
+        fname = '/'.join([outdir,'Fischer2.pdf'])
+        graphs = [self.__CLsMatchPlot(name,Fischer2) for name in sorted(self.__CLsCorrelation.keys())]
+        self.__PlotGraph(can, graphs, fname)
+
+        def Fischer3(indict):
+            return Fischer(indict,3)
+        # Create the output file and input data
+        fname = '/'.join([outdir,'Fischer3.pdf'])
+        graphs = [self.__CLsMatchPlot(name,Fischer3) for name in sorted(self.__CLsCorrelation.keys())]
         self.__PlotGraph(can, graphs, fname)
 
     def __PlotGraph(self, canvas, graphs, fname):
