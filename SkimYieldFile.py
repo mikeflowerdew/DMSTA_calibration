@@ -5,7 +5,7 @@
 import ROOT
 ROOT.gROOT.SetBatch(True)
 
-infile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_all_version3.root')
+infile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_all_version4.root')
 intree = infile.Get('susy')
 
 intree.SetBranchStatus('*', 0)

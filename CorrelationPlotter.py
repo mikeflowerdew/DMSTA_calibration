@@ -320,6 +320,7 @@ class CorrelationPlotter:
         self.__canvas.Print('/'.join([outdir,'prob.pdf']))
 
         for iplot in range(len(paramplots)):
+            paramplots[iplot].SetMaximum(2.)
             paramplots[iplot].Draw()
             ROOT.ATLASLabel(0.2,0.95,"Internal")
             self.__canvas.Print('/'.join([outdir,'param%i.pdf('%(iplot)]))
