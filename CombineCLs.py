@@ -426,12 +426,17 @@ class Combiner:
 
         # A combined table of all results
         latexfile = open('/'.join([dirname,'SRcountTable.tex']), 'w')
-        latexfile.write('\\begin{table}[htp]\n')
-        latexfile.write('\\centering\n')
-        latexfile.write('\\begin{tabular}{lr}\n')
+        latexfile.write('\\begin{tabular}{lrr}\n')
         latexfile.write('\\toprule\n')
-        latexfile.write('Signal region & Number of models \\\\ \n')
+        latexfile.write('Signal region & Number of models & Excluded models\\\\ \n')
         latexfile.write('\\midrule\n')
+
+        def writeLine(latexname,SR):
+            """Little helper function for writing one line of the table."""
+            if ExclusionCount.has_key(SR):
+                latexfile.write('%s & \\num{%i} & \\num{%i} \\\\ \n'%(latexname,SRcount[SR],ExclusionCount[SR]))
+            else:
+                latexfile.write('%s & \\num{%i} & 0 \\\\ \n'%(latexname,SRcount[SR]))
 
         # Now add in the SR results
         # Start with the 2L SRWW results
@@ -439,13 +444,13 @@ class Combiner:
         for SR in sorted(mySRs):
             # It's either SR_WWa, b, or c
             whichone = SR.split('_')[2][-1]
-            latexfile.write('2$\\ell$ SR-\\Wboson{}\\Wboson{}%s & \\num{%i} \\\\ \n'%(whichone,SRcount[SR]))
+            writeLine('2$\\ell$ SR-\\Wboson{}\\Wboson{}'+whichone, SR)
 
         # Now on to the 2L Zjets SR
         mySRs = [SR for SR in SRcount.keys() if 'Zjets' in SR]
         for SR in sorted(mySRs):
             # There should be only one...
-            latexfile.write('2$\\ell$ SR-\\Zboson{}jets & \\num{%i} \\\\ \n'%(SRcount[SR]))
+            writeLine('2$\\ell$ SR-\\Zboson{}jets', SR)
 
         # Next, the 2L mT2 SRs
         mySRs = [SR for SR in SRcount.keys() if 'SR_mT2' in SR]
@@ -454,7 +459,7 @@ class Combiner:
             whichone = SR.split('_')[2][-1]
             # But we don't call them a,b,c in the note...
             whichone = {'a':90, 'b':120, 'c':150}[whichone]
-            latexfile.write('2$\\ell$ SR-$\\mttwo^{%i}$ & \\num{%i} \\\\ \n'%(whichone,SRcount[SR]))
+            writeLine('2$\\ell$ SR-$\\mttwo^{%i}$'%(whichone), SR)
 
         # Have a break
         latexfile.write('\\midrule\n')
@@ -469,17 +474,17 @@ class Combiner:
                 print theSRs
             if theSRs:
                 SR = theSRs[0]
-                latexfile.write('3$\\ell$ SR0$\\tau$a bin %i & \\num{%i} \\\\ \n'%(ibin,SRcount[SR]))
+                writeLine('3$\\ell$ SR0$\\tau$a bin %i'%(ibin), SR)
 
         # Now the other 3L regions, if we have them
         mySRs = [SR for SR in SRcount.keys() if 'SR0b' in SR]
         for SR in sorted(mySRs):
             # There should be only one...
-            latexfile.write('3$\\ell$ SR0$\\tau$b & \\num{%i} \\\\ \n'%(SRcount[SR]))
+            writeLine('3$\\ell$ SR0$\\tau$b', SR)
         mySRs = [SR for SR in SRcount.keys() if 'SR1SS' in SR]
         for SR in sorted(mySRs):
             # There should be only one...
-            latexfile.write('3$\\ell$ SR1$\\tau$ & \\num{%i} \\\\ \n'%(SRcount[SR]))
+            writeLine('3$\\ell$ SR1$\\tau$', SR)
 
         # Have a break
         latexfile.write('\\midrule\n')
@@ -488,13 +493,15 @@ class Combiner:
         mySRs = [SR for SR in SRcount.keys() if 'FourLepton' in SR]
         for SR in sorted(mySRs):
             whichone = SR.split('_')[1]
-            latexfile.write('4$\\ell$ %s & \\num{%i} \\\\ \n'%(whichone,SRcount[SR]))
+            writeLine('4$\\ell$ '+whichone, SR)
 
-        # Have a break
-        latexfile.write('\\midrule\n')
 
         # Now the 2tau regions
         mySRs = [SR for SR in SRcount.keys() if 'TwoTau' in SR]
+        # Have a break, _if_ we have any 2tau SRs
+        if mySRs:
+            latexfile.write('\\midrule\n')
+
         for SR in sorted(mySRs):
             # Let's just hard-code this
             if 'C1C1' in SR:
@@ -505,15 +512,11 @@ class Combiner:
                 latexSR = 'SR-DS-highMass'
             elif 'lowMT2' in SR:
                 latexSR = 'SR-DS-lowMass'
-            latexfile.write('2$\\tau$ %s & \\num{%i} \\\\ \n'%(latexSR,SRcount[SR]))
+            writeLine('2$\\tau$ '+latexSR, SR)
 
         # Finish the file off
         latexfile.write('\\bottomrule\n')
         latexfile.write('\\end{tabular}\n')
-        latexfile.write('\\caption{Relative power of the EWK SUSY signal regions in the EWKH pMSSM models.\n')
-        latexfile.write('The numbers correspond to the models where the named signal region was the best of all SRs considered.\n')
-        latexfile.write('\\label{tab:CLsBestSR}}\n')
-        latexfile.write('\\end{table}\n')
         latexfile.close()
         
 if __name__ == '__main__':
