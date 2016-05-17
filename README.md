@@ -56,16 +56,10 @@ This creates a directory called `plots_officialMC/` with lots of plots that can 
 
 The behaviour of `CorrelationPlotter.py` can be altered using command-line options (use `-h` to see them all). The most important ones are:
 
-1. To use the original evgen instead of the official MC for the truth yields:
-```bash
-$ ./CorrelationPlotter.py --truthlevel
-```
-In this case, the output is in `plots_privateMC/`.
-2. To compare the real combined CLs values with those from various combinations of the per-SR CLs values, try
-```bash
-$ ./CorrelationPlotter.py --productcheck
-```
-This uses the files in `Data_*_combination`, and produces results in `productcheck/`.
+1. To use the original evgen instead of the official MC for the truth yields, with output in `plots_privateMC/`:
+  - `$ ./CorrelationPlotter.py --truthlevel`
+2. To compare the real combined CLs values with those from various combinations of the per-SR CLs values, using input from `Data_*_combination` and with output in `productcheck/`:
+  - `$ ./CorrelationPlotter.py --productcheck`
 
 ## Step 4: Apply the calibration and compute the final results
 
