@@ -448,7 +448,7 @@ def PassArguments():
         "--productcheck",
         action = "store_true",
         dest = "productcheck",
-        help = "Run a consistency check on the 4L data")
+        help = "Run a consistency check on the 3L and 4L data")
     parser.add_argument(
         "--truthlevel",
         action = "store_true",
