@@ -61,5 +61,5 @@ The behaviour of `CorrelationPlotter.py` can be altered using command-line optio
 2. To compare the real combined CLs values with those from various combinations of the per-SR CLs values, using input from `Data_*_combination` and with output in `productcheck/`:
   - `$ ./CorrelationPlotter.py --productcheck`
 
-## Step 4: Apply the calibration and compute the final results
+## Step 4: Apply the calibration and compute the final results 
 
