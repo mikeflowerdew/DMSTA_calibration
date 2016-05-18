@@ -55,10 +55,10 @@ class PaperResults:
         return self.SR and self.Nbkg and self.NbkgErr and isinstance(self.Ndata,int)
 
 # ########################################################
-# HistFitter interface
+# RooStats interface
 # ########################################################
 
-# I want to run HistFitter within a subdirectory for safety
+# I want to run each fit within a subdirectory for safety
 # Neat trick: use a context manager to handle this
 from contextlib import contextmanager
 import os
@@ -78,7 +78,7 @@ def cd(newdir):
         # At the end, change back to the original directory
         os.chdir(prevdir)
 
-def RunOneSearch(config, Nsig):
+def RunOneSearch_RooStats(config, Nsig):
     """Runs the simplechannel example from the HistFitter page, once.
     It is a one-bin fit, with once main background systematic.
     This does not, in fact, use HistFitter, rather the underlying RooStats classes,
@@ -200,6 +200,94 @@ def RunOneSearch(config, Nsig):
     except:
         # result does not exist, return None to indicate an error
         return None
+
+# ########################################################
+# HistFitter interface
+# ########################################################
+
+def RunOneSearch_HistFitter(config, Nsig):
+    """Runs the MyUserAnalysis example from the HistFitter page, once.
+    It is a one-bin fit, with once main background systematic.
+
+    config should be a PaperResults object, which has all the info I need to set up a simple 1-bin fit,
+    while Nsig is the expected number of signal events.
+    The method returns a negative log-likelihood value, or None if a problem occurred.
+    """
+
+    # Check if the input is OK
+    if not config.isOK(): return None
+
+    # Work in a subdirectory named the same as the SR
+    testdir = config.SR
+    import os,shutil
+    # Remove the directory if it already exists, so we have a clean start
+    if os.path.exists(testdir):
+        shutil.rmtree(testdir)
+    # Make the directory(ies)
+    os.makedirs(testdir)
+
+    # Use the context manager to handle the changing of directory
+    with cd(testdir):
+
+        # Warning: the internal logic of this is a bit hairy
+        # Be careful if you edit!
+
+        # ########################
+        # FIXME FIXME FIXME
+        # NEEDS TO BE UPDATED TO ACTUALLY RUN HISTFITTER!
+        # ########################
+
+        # HistFitter.py -fwp -F excl <config>.py
+        # Util::GeneratePlots("results/MyUserAnalysis/SplusB_combined_NormalMeasurement_model.root", "MyUserAnalysis", 0, 0, 0, 0, 1, 0, "", 0, "", 0);
+        # (run by Sarah as root -l -b -q 'extractLikelihood.C()')
+        # Then the results directory contains can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root
+        # Which has a RooCurve called nll_mu_Sig
+        # nll_mu_Sig.Eval(1.) gets the mu=1 LLH
+
+        # ########################
+        # Step 0: Make sure we have everything we need
+
+        # # Does not appear to be necessary
+        # import shutil
+        # shutil.copy('../HistFactorySchema.dtd', '.')
+
+        # ########################
+        # Step 1: Create the HistFitter config file
+
+        configfile = open('HistFitterConfig.py', 'w')
+        configfile.write('ndata     =  7.\n')
+        configfile.write('nbkg      =  5.\n')
+        configfile.write('nsig      =  3.\n')
+        configfile.write('nbkgErr   =  1.\n')
+        configfile.write('nsigErr   =  0.01\n')
+
+        with open('../HistFitterConfig.py') as genericfile: configfile.write(genericfile.read())
+        configfile.close()
+
+        # ########################
+        # Step 2: Run HistFitter
+
+        ROOT.gSystem.Exec('HistFitter.py -fwp -F excl HistFitterConfig.py')
+
+        # ########################
+        # Step 3: Generate the LLH plot
+
+        ROOT.Util.GeneratePlots('results/MyUserAnalysis/SplusB_combined_NormalMeasurement_model.root', 'MyUserAnalysis', 0, 0, 0, 0, 1, 0, "", 0, "", 0)
+
+        # ########################
+        # Step 4: Extract the results
+        
+        NLLfile = ROOT.TFile.Open('results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root')
+        
+        NLLfunc = NLLfile.Get('nll_mu_Sig')
+
+        print NLLfunc
+        NLLfile.ls()
+        
+        # For now, just take the NLL wrt the best fit mu value
+        NLLvalue = NLLfunc.Eval(1.)
+    
+    return NLLvalue
 
 # ########################################################
 # Signal yield scanning strategy
@@ -338,6 +426,7 @@ if __name__=='__main__':
     ROOT.gROOT.LoadMacro("AtlasUtils.C") 
     ROOT.gROOT.LoadMacro("AtlasLabels.C") 
     ROOT.gSystem.Load('libSusyFitter.so')
+    ROOT.gROOT.ProcessLine('#include "/ptmp/mpp/flowerde/HistFitter/src/Utils.h"') # Needed to get the Utils from HistFitter working
 
     # Read in the analyses
     datafile = open('PaperSRData.dat')
@@ -398,7 +487,7 @@ if __name__=='__main__':
                 print 'CONFIG NOT OK!!!!'
 
             # Run the fit and record the result if it makes sense
-            CLs = RunOneSearch(config, Nsig)
+            CLs = RunOneSearch_RooStats(config, Nsig)
             if CLs is not None:
                 results.append( (Nsig,CLs) )
             
@@ -410,7 +499,7 @@ if __name__=='__main__':
 
             # Crude attempt to avoid an infinite loop
             # Note this len() call counts the number of calls to NSigStrategy,
-            # *not* the number of calls to RunOneSearch.
+            # *not* the number of calls to RunOneSearch_RooStats.
             if len(YieldOrder) > 100:
                 print 'Cutting out because I reached %i iterations'%(len(YieldOrder))
                 break
