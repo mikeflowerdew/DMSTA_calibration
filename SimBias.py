@@ -2,6 +2,7 @@
 
 """A simple script to check for possible bias in the selection of simulated models."""
 
+# Import a useful class to help with computing errors
 from ValueWithError import valueWithError
 
 # A bit dumb, but I need a helper function
@@ -12,11 +13,15 @@ def pullInOverflow(hist):
 
     nbins = hist.GetNbinsX()
 
+    # Compute what the last bin _should_ have, using valueWithError
     lastbin  = valueWithError(hist.GetBinContent(nbins  ),hist.GetBinError(nbins ))
     lastbin += valueWithError(hist.GetBinContent(nbins+1),hist.GetBinError(nbins+1))
 
+    # Fill the final bin with that value
     hist.SetBinContent(nbins,lastbin.value)
     hist.SetBinError(nbins,lastbin.error)
+
+    # For completeness, could empty the overflow?
 
     return
     
@@ -24,18 +29,20 @@ def drawHistos(hname1,hname2,title,pdfname,hname3=''):
     """Draw two plots on the same canvas,
     both with overflows pulled in and normalised to unit area.
     It is assumed that both histograms exist in ROOT.gDirectory.
+    An optional third histogram can also be drawn.
     """
 
-    # Draw the two histograms, making sure they have the same binning
+    # Get the histograms
     hist1 = ROOT.gDirectory.Get(hname1)
     hist2 = ROOT.gDirectory.Get(hname2)
     hist3 = ROOT.gDirectory.Get(hname3) if hname3 else None
 
-    # Pull overflow into the histogram
+    # Pull overflows into the histograms
     pullInOverflow(hist1)
     pullInOverflow(hist2)
     pullInOverflow(hist3)
 
+    # Simple sanity check
     if not hist1.Integral(): return False
 
     # Set up style and normalisation
@@ -69,6 +76,12 @@ def drawHistos(hname1,hname2,title,pdfname,hname3=''):
 
     return [hist1,hist2,hist3] if hist3 else [hist1,hist2]
 
+# ########################################################
+# Start processing here
+# ########################################################
+
+# There is no "if __name__ == '__main__'" check, as this is only meant to be run as a script
+
 # Import & set up ATLAS style
 import ROOT
 ROOT.gROOT.SetBatch(True)
@@ -83,18 +96,23 @@ simtree = simfile.Get('susy')
 evgenfile = ROOT.TFile.Open('Data_Yields/SummaryNtuple_STA_evgen.root')
 evgentree = evgenfile.Get('susy')
 
-# Observed xsec limits from the paper, converted to events
-# Note that there is no SR0
-obslimits = [0,35.7,20.7,12.6,8.9]
+# Observed xsec limits from the disappearing track paper, converted to events
+#                SR1,  SR2,  SR3, SR4 (there is no SR0)
+obslimits = [0, 35.7, 20.7, 12.6, 8.9]
+# Logical or of all SR yields to see if any are above the limits from the disappearing track paper
 passdistrk = '||'.join(['EW_ExpectedEvents_DisappearingTrack_SR%i > %.1f'%(SR,obslimits[SR]) for SR in range(1,5)])
 
-# Set up the output file
+# Set up the output pdf file
 pdfname = 'Data_Yields/SimSkim.pdf'
 canvas = ROOT.TCanvas('can','can',800,600)
 canvas.Print(pdfname+'[')
 
-# Some way to store the output
+# Some way to store the output (required in order to keep all histograms in scope & avoid garbage collection)
 histolist = []
+
+# ########################################################
+# The event loop
+# ########################################################
 
 # Loop over all branches
 branchlist = simtree.GetListOfBranches()
@@ -104,7 +122,9 @@ for branchname in branchlist:
     # Adjust variable purely for my convenience
     branchname = branchname.GetName()
 
+    # Decide on what binning to use, depending on the variable type
     # I cannot get automatic ranging to work, so let's do it by hand
+    # Even this approach seems to have problems...
     if branchname.startswith('BF_'):
         binstr = '(101,0,1.01)'
     elif branchname.startswith('Cross_section'):
@@ -118,14 +138,19 @@ for branchname in branchlist:
     else:
         binstr = ''
 
-    # Draw the two histograms, making sure they have the same binning
+    # Draw the three histograms, making sure they have the same binning
     evgentree.Draw(branchname+'>>hevgen'+branchname+binstr)
     simtree.Draw(branchname+'>>hsim'+branchname+binstr)
     evgentree.Draw(branchname+'>>hdistrk'+branchname+binstr,
-                   passdistrk)
+                   passdistrk) # Only events that are excluded by the disappearing track search
 
+    # Draw the three histograms and add to histolist
     histolist.extend(drawHistos('hevgen'+branchname,'hsim'+branchname,
                                 branchname, pdfname, 'hdistrk'+branchname))
+
+# ########################################################
+# Tidy up and summarise
+# ########################################################
 
 # Close the pdf file
 canvas.Print(pdfname+']')
@@ -136,8 +161,7 @@ for h in histolist:
     h.Write()
 outfile.Close()
 
-# I need more info about the disappearing track analysis
-
+# Print out a bit more info about the disappearing track analysis
 evgenentries = evgentree.GetEntries()
 for SR in range(1,5):
     passlimit = 'EW_ExpectedEvents_DisappearingTrack_SR%i > %.1f'%(SR,obslimits[SR])

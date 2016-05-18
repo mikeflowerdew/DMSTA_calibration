@@ -20,6 +20,16 @@ On top of the git repository, you also need to have a directory called `Data_Yie
 1. `D3PDs.txt`, with one simulated dataset per line.
 2. `SummaryNtuple_STA_all_version4.root` (or change the name in `SkimYieldFile.py` if yours is different).
 
+Many scripts make plots using the ATLAS style, therefore you also need this correctly installed. You can test to see if this works like this:
+```python
+$ python
+> import ROOT
+> ROOT.gROOT.LoadMacro("AtlasStyle.C")
+> ROOT.SetAtlasStyle()
+> ROOT.gROOT.LoadMacro("AtlasUtils.C")
+```
+If that all works OK, then you're good to go.
+
 ## Step 1: Process the summary ntuple
 
 First, the summary ntuple is to be split and drastically reduced in size (else later processing steps will be _very_ slow). The command to do this is
