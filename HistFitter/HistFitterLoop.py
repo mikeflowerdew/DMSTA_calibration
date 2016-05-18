@@ -286,6 +286,8 @@ def RunOneSearch_HistFitter(config, Nsig):
         
         # For now, just take the NLL wrt the best fit mu value
         NLLvalue = NLLfunc.Eval(1.)
+
+        NLLfile.Close()
     
     return NLLvalue
 

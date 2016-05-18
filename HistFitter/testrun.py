@@ -36,3 +36,12 @@ LLH_HF = RunOneSearch_HistFitter(config, Nsig)
 
 print 'The CLs result from RooStats is',CLs_RS
 print 'The negative LLH result from HistFitter is',LLH_HF
+
+# Let's do a simple test
+import shutil
+shutil.copy('%s/results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root'%(config.SR), 'HFresult_%s.root'%(Nsig))
+
+for Nsig in [1.0, 10.0]:
+    
+    LLH_HF = RunOneSearch_HistFitter(config, Nsig)
+    shutil.copy('%s/results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root'%(config.SR), 'HFresult_%s.root'%(Nsig))
