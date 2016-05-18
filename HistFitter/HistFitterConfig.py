@@ -5,8 +5,8 @@ The intention is to prepend the key information, like this:
 ndata     =  7. 	# Number of events observed in data
 nbkg      =  5.	 	# Number of predicted bkg events
 nsig      =  3.  	# Number of predicted signal events
-nbkgErr   =  1.  	# (Absolute) Statistical error on bkg estimate
-nsigErr   =  0.01  	# (Absolute) Statistical error on signal estimate
+nbkgErr   =  1.  	# (Absolute) systematic error on bkg estimate
+# nsigErr   =  0.01  	# (Absolute) systematic error on signal estimate
 # SRname    = "SR1"       # Signal region name
 
 """
@@ -97,7 +97,7 @@ sigSample.setNormFactor("mu_Sig",1.,0.,100.)
 sigSample.setStatConfig(True)
 sigSample.setNormByTheory()
 sigSample.buildHisto([nsig],"UserRegion","cuts",0.5)
-sigSample.buildStatErrors([nsigErr],"UserRegion","cuts")
+# sigSample.buildStatErrors([nsigErr],"UserRegion","cuts")
 # sigSample.addSystematic(cors)
 # sigSample.addSystematic(ucs)
 

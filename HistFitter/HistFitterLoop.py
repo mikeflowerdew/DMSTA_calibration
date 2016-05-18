@@ -259,7 +259,7 @@ def RunOneSearch_HistFitter(config, Nsig):
         configfile.write('nbkg      =  5.\n')
         configfile.write('nsig      =  3.\n')
         configfile.write('nbkgErr   =  1.\n')
-        configfile.write('nsigErr   =  0.01\n')
+        # configfile.write('nsigErr   =  0.01\n')
 
         with open('../HistFitterConfig.py') as genericfile: configfile.write(genericfile.read())
         configfile.close()
