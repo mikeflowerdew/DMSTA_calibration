@@ -212,6 +212,9 @@ class DMSTAReader:
         return data
 
     def __ReadYamlFiles(self, data, analysis, fname, modelname):
+        """Homebrewed reading of YAML files. The assumed format is
+        SRname: [DSID,CLs_obs,CLs_exp]
+        """
 
         f = open(fname)
 
@@ -267,6 +270,9 @@ class DMSTAReader:
         return data
 
     def __ReadPmssmFiles(self, data, analysis, fname, SRname):
+        """Homebrewed reading of tab-separated data files. The assumed format is:
+        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down
+        """
 
         analysisSR = '_'.join([self.analysisdict[analysis],SRname])
 
