@@ -22,7 +22,9 @@ class SignalRegion:
         'CLbExp' : 'Expected CL_{b}',
         'CLsbExp': 'Expected CL_{s+b}',
 
-        'LogCLs' : 'log_{10}(CL_{s})',
+        'LogCLs'    : 'log_{10}(CL_{s})',
+        'LogCLsObs' : 'Observed log_{10}(CL_{s})',
+        'LogCLsExp' : 'Expected log_{10}(CL_{s})',
         }
     
     def __init__(self, name, infolist=None):

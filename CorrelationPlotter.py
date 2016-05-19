@@ -161,6 +161,11 @@ class CorrelationPlotter:
             print 'ERROR: Cannot save graph output, as it has not been created yet!'
             return
 
+        # Create the output directory if it does not already exist
+        import os
+        if not os.path.exists(dirname):
+            os.makedirs(dirname)
+
         # First write the correlation graphs (scatter plots)
         # Note that any fitted TF1s are still associated with them,
         # and therefore also saved.

@@ -14,10 +14,10 @@ class DMSTAReader:
     # 1) the keys control what analyses will be included
     # 2) the values are associated strings used in the ntuple branch names
     analysisdict = {
-        '3L': 'EwkThreeLepton_3L',
-        '4L': 'EwkFourLepton',
+        # '3L': 'EwkThreeLepton_3L',
+        # '4L': 'EwkFourLepton',
         '2L': 'EwkTwoLepton',
-        '2T': 'EwkTwoTau',
+        # '2T': 'EwkTwoTau',
         }
     
     # Gah, way too many arguments - could fix with slots if I have time
@@ -31,7 +31,7 @@ class DMSTAReader:
         The analysis names are taken from self.analysisdict.keys(), and the SR names are deduced from the file names.
         The ntuple is in the format described in https://twiki.cern.ch/twiki/bin/view/AtlasProtected/SUSYRun1pMSSMSummaryNtuple
         The file format column-based with whitespace separation and should look like
-        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down
+        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down   CL_s_expected
         Lines beginning with a # are regarded as comments and ignored.
         The dataset will be used to label the model.
         Lines with non-numeric data will be ignored.
@@ -234,7 +234,7 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['LogCLs'])
+                obj = SignalRegion(analysisSR, ['LogCLsObs','LogCLsExp'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
@@ -247,13 +247,14 @@ class DMSTAReader:
             numericdata = ast.literal_eval(''.join(splitline[1:]))
 
             try:
-                CLs = float(numericdata[1])
+                CLsObs = float(numericdata[1])
+                CLsExp = float(numericdata[2])
             except IndexError:
                 print 'WARNING: Incomplete data in %s, %s'%(fname,SRname)
                 print line
                 continue
             except:
-                print 'WARNING: Invalid CLs value %s in %s, %s'%(numericdata[1],fname,SRname)
+                print 'WARNING: Invalid CLs values %s and %s in %s, %s'%(numericdata[1],numericdata[2],fname,SRname)
                 continue
 
             try:
@@ -262,8 +263,10 @@ class DMSTAReader:
             except KeyError:
                 datum = obj.AddData(modelname)
 
-            if CLs and CLs > 0:
-                datum['LogCLs'] = math.log10(CLs)
+            if CLsObs and CLsObs > 0:
+                datum['LogCLsObs'] = math.log10(CLsObs)
+            if CLsExp and CLsExp > 0:
+                datum['LogCLsExp'] = math.log10(CLsExp)
                 
         f.close() # Let's be tidy
 
@@ -271,7 +274,7 @@ class DMSTAReader:
 
     def __ReadPmssmFiles(self, data, analysis, fname, SRname):
         """Homebrewed reading of tab-separated data files. The assumed format is:
-        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down
+        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down   CL_s_expected
         """
 
         analysisSR = '_'.join([self.analysisdict[analysis],SRname])
@@ -280,7 +283,7 @@ class DMSTAReader:
         obj = next((x for x in data if x.name == analysisSR), None)
         if obj is None:
             # First time we've looked at this analysisSR
-            obj = SignalRegion(analysisSR, ['LogCLs'])
+            obj = SignalRegion(analysisSR, ['LogCLsObs','LogCLsExp'])
             data.append(obj)
 
             # Store the equivalent ntuple branch name for convenience later
@@ -306,20 +309,23 @@ class DMSTAReader:
             
             try:
                 # Find all the input data first
-                CLb = float(splitline[1])
-                CLsb = float(splitline[4])
+                CLbObs  = float(splitline[1])
+                CLsbObs = float(splitline[4])
+                CLsExp  = float(splitline[7])
             except:
                 print 'WARNING: Malformed line in %s: %s'%(fname,line)
                 # Carry on, hopefully we can just analyse the other results
                 continue
 
             # Check that either CLsb or CLb were read OK
-            if CLb is None and CLsb is None: continue
+            if CLbObs is None and CLsbObs is None and CLsExp is None: continue
 
-            if not CLb and CLb is not None:
-                print 'WARNING: CLb is zero in %s, model %s'%(fname,modelpoint)
-            if not CLsb and CLsb is not None:
-                print 'WARNING: CLsb is zero in %s, model %s'%(fname,modelpoint)
+            if not CLbObs and CLbObs is not None:
+                print 'WARNING: CLbObs is zero in %s, model %s'%(fname,modelpoint)
+            if not CLsbObs and CLsbObs is not None:
+                print 'WARNING: CLsbObs is zero in %s, model %s'%(fname,modelpoint)
+            if not CLsExp and CLsExp is not None:
+                print 'WARNING: CLsExp is zero in %s, model %s'%(fname,modelpoint)
 
             try:
                 datum = obj.data[modelpoint]
@@ -327,8 +333,10 @@ class DMSTAReader:
             except KeyError:
                 datum = obj.AddData(modelpoint)
 
-            if CLb and CLsb:
-                datum['LogCLs'] = math.log10(CLsb/CLb)
+            if CLbObs and CLsbObs:
+                datum['LogCLsObs'] = math.log10(CLsbObs/CLbObs)
+            if CLsExp and CLsExp > 0:
+                datum['LogCLsExp'] = math.log10(CLsExp)
 
         f.close() # Let's be tidy
         
@@ -428,22 +436,27 @@ class DMSTAReader:
             graph = funcfile.Get(shortSRname+'_graph')
 
             # FIXME: hard-coded -6...
-            SRobj.fitfunctions['LogCLs'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
+            SRobj.fitfunctions['LogCLsObs'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
+            SRobj.fitfunctions['LogCLsExp'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
 
             # Extract the TF1 object - does not work.
-            # SRobj.fitfunctions['LogCLs'] = funcfile.Get(shortSRname)
-            # SRobj.fitfunctions['LogCLs'].SetName('fitfunc') # for later convenience
-            SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
+            # SRobj.fitfunctions['LogCLsObs'] = funcfile.Get(shortSRname)
+            # SRobj.fitfunctions['LogCLsObs'].SetName('fitfunc') # for later convenience
+            SRobj.fitfunctions['LogCLsObs'].SetParameter(0,1.)
+            SRobj.fitfunctions['LogCLsExp'].SetParameter(0,1.)
 
             # Restrict the fit range to small CLs values
-            # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.5)
-            SRobj.fitfunctions['LogCLs'].xmin = -6.
-            SRobj.fitfunctions['LogCLs'].xmax = -0.5
+            # SRobj.fitfunctions['LogCLsObs'].SetRange(-6, -0.5)
+            SRobj.fitfunctions['LogCLsObs'].xmin = -6.
+            SRobj.fitfunctions['LogCLsObs'].xmax = -0.5
+            SRobj.fitfunctions['LogCLsExp'].xmin = -6.
+            SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
 
             # Special case(s)
             if 'SR0Z' in SRobj.name:
-                # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
-                SRobj.fitfunctions['LogCLs'].xmax = -0.6
+                # SRobj.fitfunctions['LogCLsObs'].SetRange(-6, -0.6)
+                SRobj.fitfunctions['LogCLsObs'].xmax = -0.6
+                SRobj.fitfunctions['LogCLsExp'].xmax = -0.6
 
             SRobj.GoodFit = GoodFit
             SRobj.FitErrorGraph = FitErrorGraph
