@@ -1,16 +1,27 @@
 #!/usr/bin/env python
 
+# ########################################################
+# Main helper class for calibration
+# ########################################################
+
 class CorrelationPlotter:
+    """A class to store and plot the correlation between two variables (eg signal yield and CLs) for an arbitrary number of SRs.
+
+    The data format is ultimately defined by the SignalRegion class (in DataObject.py),
+    which is read in by one of the Reader classes (Reader_DMSTA.py by now being the only relevant one).
+    More or less everything else (eg where output plots are written) is configurable.
+    """
 
     def __init__(self, data):
-        """Data should be a list of SignalRegion objects, with names corresponding to "analysis_SR".
+        """Initialise the object, storing a reference to the data.
+        data should be a list of SignalRegion objects, with names corresponding to "analysis_SR".
         """
 
         # Cache the input data
         self.__data = data
         
-        # This dictionary will eventually have the same structure as 
-        # the data subdictionaries, but with TGraph elements
+        # This will be a dictionary containing the TGraph objects used in the calibration
+        # The keys will be based on the analysis name, SR name and the type of thing that is plotted (eg log(CLs))
         self.__correlations = None
 
         # Fit result cache, for monitoring
@@ -28,7 +39,7 @@ class CorrelationPlotter:
 
         # Loop over the analysis/SR list
         # First pupose: populate the complete model set
-        # Second purpose: look for incomplete data ie missing yield and/or CLs+b
+        # Second purpose: look for incomplete data ie missing yield and/or CLs values
 
         for dataobj in self.__data:
 
@@ -43,6 +54,7 @@ class CorrelationPlotter:
         print
 
         # Second loop, to check if any analyses have missing models
+        # Just for information, no action is taken
         
         for dataobj in self.__data:
 
@@ -51,29 +63,34 @@ class CorrelationPlotter:
                 print '\t','\n\t'.join(map(str, sorted(modelset - set(dataobj.data.keys())))),'\n'
 
     def MakeCorrelations(self):
-        """Makes a TGraph object for each SR
-        where we have both a truth-level yield and a CLs value.
+        """Makes a TGraph object for each SR where we have both a truth-level yield and a CLs value.
         """
         
+        # First check and clean the data
         self.CheckData()
 
         # Clear the correlation data
         self.__correlations = {}
         self.__fitresults = {}
 
+        # Loop over each SR
+        # Recall that dataobj is a SignalRegion object
         for dataobj in self.__data:
 
-            # Additional loop over the different CL values
+            # Loop over the different CL values (one plot per CL type)
             for CLtype in dataobj.InfoList():
 
-                # Create the new TGraph
-                graphkey = '_'.join([dataobj.name,CLtype])
+                # Work out what to call this graph
+                graphkey = '_'.join( [dataobj.name, CLtype] )
+
+                # See if it already exists
                 try:
                     graph = self.__correlations[graphkey]
                 except KeyError:
+                    # Graph does not exist, we need to make it
                     graph = ROOT.TGraphErrors()
                     graph.SetName('Corr_%s'%(graphkey))
-                    graph.SetTitle(dataobj.name.replace('_',' '))
+                    graph.SetTitle(dataobj.name.replace('_',' ')) # Helps when plotting
                     
                     # Little hack to set the x-axis title correctly
                     # Using graph.GetXaxis().SetTitle(...) now is pointless,
@@ -84,75 +101,116 @@ class CorrelationPlotter:
                     except KeyError:
                         print 'WARNING in CorrelationPlotter: No CLname info provided for %s in %s'%(CLtype,dataobj.name)
                         graph.xtitle = 'CL'
+
+                    # Store the graph for future use
                     self.__correlations[graphkey] = graph
 
-                # Fill the graph with data
+                # Loop over each model to extract yield and CL values
                 for model,info in dataobj.data.iteritems():
 
-                    # Add the new point
+                    # Check if we have the necessary x- and y-axis values
                     if info[CLtype] is not None and info['yield']:
+
+                        # Add a new point to the TGraph
                         pointNumber = graph.GetN()
                         graph.SetPoint(pointNumber, info[CLtype], info['yield'])
 
                         # Check to see if we have an error on the yield
                         try:
+                            # The next line only works if info['yield'] is a valueWithError object
                             graph.SetPointError(pointNumber, 0, info['yield'].error)
                         except AttributeError:
-                            # Absolutely OK, we just don't have errors
+                            # Absolutely OK, we just don't have errors on the yield
                             pass
 
-                # Finally, attempt to fit the graph
+                # Finally, attempt to fit the graph for this SR + CL type combination
+                # Only try this if it's non-empty
                 if graph.GetN():
+
                     # Give a warning if this was already fitted (shouldn't happen?)
                     if self.__fitresults.has_key(graphkey):
                         print 'WARNING: Graph %s has already been fitted'%(graphkey)
+
                     # Overwrite previous fit result, if any
+                    # The fit function is defined by the SignalRegion object itself
                     self.__fitresults[graphkey] = self.FitGraph(graph, dataobj.fitfunctions[CLtype])
 
-                    # Cache for later if this is a good fit or not
+                    # The fit is good if
+                    # a) the fit result exists
+                    # b) the fit status is zero (nonzero implies an error)
+                    # c) the SignalRegion object's GoodFit function is satisfied
                     graph.goodfit = self.__fitresults[graphkey] and (not self.__fitresults[graphkey].Status()) and dataobj.GoodFit(graph)
+
+                    # Compute and store the error on the fit
                     graph.fiterrorgraph = dataobj.FitErrorGraph(graph)
 
+                # End of loop over different CL types
+                pass
+
+            # End of loop over models
+            pass
+
     def SaveData(self, dirname):
-        """Saves the graphs in a TFile called results.root,
-        and a separate summary of the good fit results in calibration.root"""
+        """Save graphs in self.__correlations in a TFile called results.root,
+        and a separate summary of the good fit results in calibration.root.
+        The latter file only records SRs with a good fit, and can therefore be used
+        safely by downstream code, without further checks.
+        """
 
         if self.__correlations is None:
             print 'ERROR: Cannot save graph output, as it has not been created yet!'
             return
 
+        # First write the correlation graphs (scatter plots)
+        # Note that any fitted TF1s are still associated with them,
+        # and therefore also saved.
         outfile = ROOT.TFile.Open('/'.join([dirname,'results.root']),'RECREATE')
 
         for analysisSR in sorted(self.__correlations.keys()):
+            # Save all graphs, for reference
+            # These elements are just TGraph objects
             self.__correlations[analysisSR].Write()
 
         outfile.Close()
 
+        # Now write the fitted functions to a separate file, for easier downstream access
         outfile = ROOT.TFile.Open('/'.join([dirname,'calibration.root']),'RECREATE')
 
+        # Loop again over the correlation dictionary
         for analysisSR in sorted(self.__correlations.keys()):
 
+            # Get the graph
             graph = self.__correlations[analysisSR]
 
-            # Use the result we cached in MakeCorrelations to decide if we store this one
+            # Use the result we cached in MakeCorrelations to decide if we want to keep it
             if not graph.goodfit:
                 print 'INFO in SaveData: %s rejected'%(analysisSR)
                 continue
-            
+
+            # Now we extract the fitted TF1 associated with the graph
             funclist = graph.GetListOfFunctions()
+
+            # There _should_ be only one function
             if len(funclist) != 1:
                 print 'WARNING in SaveData: %i fit functions found for %s'%(len(funclist),analysiSR)
+
+            # If we have no function, there's nothing to store...
             if not funclist:
                 continue
 
-            # Regardless, just write out one function (should be good enough)
+            # At this point, there _might_ be more than one function (though there shouldn't be)
+            # Regardless, just write out the first (should be good enough)
             func = funclist[0].Clone()
             func.SetName(analysisSR)
             
             # Set the function minimum to the first observed point
+            # This is needed by downstream code, and is only accessible via the original TGraph scatter plot
             xmin = min([graph.GetX()[i] for i in range(graph.GetN())])
+
             # For the log-scale version, I have to set the maximum to zero now,
             # or else it's not saved
+
+            # Use a trick to tell if this is a linear or log-scale CL value
             if xmin >=0:
                 # Linear
                 func.SetRange(xmin,func.GetXmax())
@@ -165,18 +223,24 @@ class CorrelationPlotter:
         outfile.Close()
 
     def PlotData(self, outdir):
-        """Makes plots in the specified directory."""
+        """Makes scatter plots with the fitted functions in the specified directory."""
 
         if self.__correlations is None:
-            print 'ERROR: Cannot plos graph output, as it has not been created yet!'
+            print 'ERROR: Cannot plot graph output, as it has not been created yet!'
             return
 
+        # Create the output directory if it does not already exist
         import os
         if not os.path.exists(outdir):
             os.makedirs(outdir)
 
+        # Make a canvas (this could be done more elegantly)
         self.__canvas = ROOT.TCanvas('can','can',800,800)
 
+        # ###########################################
+        # Per-SR scatter plots
+
+        # Loop over the correlation graphs
         for analysisSR,graph in self.__correlations.items():
 
             graph.SetMarkerSize(1)
@@ -196,61 +260,74 @@ class CorrelationPlotter:
                 # Should not happen, this is just in case
                 print 'WARNING in CorrelationPlotter: python-level augmentation of %s graph did not work'%(graph.GetName())
 
+            # Set the minimum of the y-axis to zero
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
+
             # Check if the x-axis goes negative (ie log(CLs) vs CLs)
             if graph.GetXaxis().GetXmin() >= 0:
                 # Linear CL scale
+
+                # Set x-axis minimum to zero
                 graph.GetXaxis().SetLimits(0,graph.GetXaxis().GetXmax())
+
+                # If the x-axis is linear, then we want to also plot a log(x) version of the plot
                 doLogX = True
             else:
                 # Log(CL) scale
+                # Sanity check
                 assert(graph.GetXaxis().GetXmax() <= 0)
+
                 # Zoom out to a consistent range if needed
+                # ie always plot down to -6, or the graph minimum if this is smaller
                 xmin = min([graph.GetXaxis().GetXmin(), -6])
                 graph.GetXaxis().SetLimits(xmin,0)
+
+                # If the x-axis is logarithmic, there is no point trying a log(log(x)) plot
                 doLogX = False
 
             # Draw again (this is the pretty one!)
             graph.Draw('ap')
+
+            # Draw the fit function error band next, if it exists
             if graph.fiterrorgraph:
                 graph.fiterrorgraph.SetMarkerSize(0)
                 graph.fiterrorgraph.SetFillColorAlpha(ROOT.kYellow, 0.35)
                 graph.fiterrorgraph.Draw('same3')
 
-            # The fit function is drawn, but underneath the points.
-            # Let's put it on top
+            # The fit function itself should go on top
             for f in funclist:
-                # Make sure we plot the whole function
-#                 if f.GetXmin() >= 0:
-#                     # Linear
-#                     f.SetRange(0,f.GetXmax())
-#                 else:
-#                     # Logarithmic
-#                     f.SetRange(f.GetXmin(),0)
 
                 f.Draw('same')
 
+                # Put the fit parameters on the plot, for convenience
                 printy = 0.9 # Start position for listing the fit parameters
                 for ipar in range(f.GetNpar()):
                     printy -= 0.05
                     ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
 
+            # Add the graph title, so you can see which SR this is
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
+
+            # And an ATLAS label!
             ROOT.ATLASLabel(0.6,0.9,"Internal")
 
+            # Open a multi-page pdf file
+            # This adds the current canvas, ie completely "natural" x and y axes
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf(']))
 
-            # Try some variations with log scales
+            # If the x-axis is linear, plot a log(x) vs log(y) version
             if doLogX:
                 self.__canvas.SetLogx()
                 self.__canvas.SetLogy()
                 self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
+            # "Natural" x-axis, log(y)
             self.__canvas.SetLogx(0)
             self.__canvas.SetLogy()
             self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
 
             if doLogX:
+                # log(x) vs linear y
                 self.__canvas.SetLogx()
                 self.__canvas.SetLogy(0)
                 self.__canvas.Print('/'.join([outdir,analysisSR+'.pdf']))
@@ -266,17 +343,29 @@ class CorrelationPlotter:
             # Strange, but true!
             graph.Delete()
 
-        # Now plot some summary fit results
+            # End of loop over per-SR correlation graphs (scatter plots)
+            pass
+
+        # ###########################################
+        # Summary plots
+
+        # Fit chi^2 summary
         chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
                              len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+
+        # Fit probability summary
         probplot = chi2plot.Clone('probplot')
         probplot.GetYaxis().SetTitle('Fit probability')
+
+        # Plots of the fit parameter(s)
         paramplots = [chi2plot.Clone('param%iplot'%(i)) for i in range(self.__fitresults.values()[0].NPar())]
         for iplot in range(len(paramplots)):
             paramplots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
         
+        # Loop over the fit results and fill the summary graphs
         for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
 
+            # Use the analysis/SR name as a bin label
             chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
             probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
             for iplot in range(len(paramplots)):
@@ -286,6 +375,7 @@ class CorrelationPlotter:
             if self.__fitresults[analysisSR] is None:
                 continue
 
+            # Fill the three plots
             if self.__fitresults[analysisSR].Ndf():
                 chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
                 
@@ -294,6 +384,8 @@ class CorrelationPlotter:
             for iplot in range(len(paramplots)):
                 paramplots[iplot].SetBinContent(ibin+1, abs(self.__fitresults[analysisSR].Value(iplot)))
                 paramplots[iplot].SetBinError(ibin+1, self.__fitresults[analysisSR].Error(iplot))
+
+            # End of loop over fit results
 
         # Make sure the labels can be read, and adjust the canvas margin to fit
         chi2plot.GetXaxis().LabelsOption('v')
@@ -309,16 +401,19 @@ class CorrelationPlotter:
         oldmargin = self.__canvas.GetBottomMargin()
         self.__canvas.SetBottomMargin(0.3)
 
+        # Draw the chi^2 plot
         chi2plot.SetMinimum(0)
         chi2plot.Draw()
         ROOT.ATLASLabel(0.5,0.85,"Internal")
         self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
 
+        # Draw the fit probability plot
         probplot.SetMinimum(0)
         probplot.Draw()
         ROOT.ATLASLabel(0.5,0.85,"Internal")
         self.__canvas.Print('/'.join([outdir,'prob.pdf']))
 
+        # Draw the fit parameter plots
         for iplot in range(len(paramplots)):
             paramplots[iplot].SetMaximum(2.)
             paramplots[iplot].Draw()
@@ -327,12 +422,16 @@ class CorrelationPlotter:
             self.__canvas.SetLogy()
             self.__canvas.Print('/'.join([outdir,'param%i.pdf)'%(iplot)]))
 
-        # Reset the canvas
+        # Reset the canvas in case the method is extended (or the canvas reused)
         self.__canvas.SetBottomMargin(oldmargin)
+
+        # ###########################################
+        # Screen printout
 
         print
         print '======= Final summary printout'
 
+        # Work out the longest analysis/SR name, to help formatting the output
         keylength = max([len(x) for x in self.__fitresults.keys()])
         keyfmtstring = '%%%is'%(keylength) # Yay, formatting the format string!
 

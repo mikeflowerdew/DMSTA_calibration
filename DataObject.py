@@ -27,11 +27,14 @@ class SignalRegion:
     
     def __init__(self, name, infolist=None):
         """Initialise the object with a name and (optionally) a list of which CL info will be provided.
+
         Name would usually encode the analysis and SR names.
+
         The infolist describes which CL-like quantities will be supplied.
         The values of the list should match keys of SignalRegion.CLnames, see also the comment there.
         If something really non-standard is needed, just modify the CLnames member of your instance.
         By default, it is assumed that CLs, CLb and CLsb will be provided.
+
         Every data entry will have "yield" in addition to the infolist items.
         The object also defines a "fitfunctions" dictionary, with the same keys as infolist.
         These can be populated with strings and/or TF1 objects in the reader class,
@@ -44,6 +47,9 @@ class SignalRegion:
         else:                self.__infolist = infolist
 
         # Data (CL values) and fit functions will be filled later
+        # The structure of data is a dictionary of dictionaries like this:
+        # { modelID : {'yield': yield, 'CLs': CLs, ... }, ... }
+        # It should be filled by an appropriate Reader class, eg Reader_DMSTA
         self.data = {}
         self.fitfunctions = dict.fromkeys(self.__infolist) # Values default to None
 
@@ -66,7 +72,7 @@ class SignalRegion:
         self.data[modelID] = dict.fromkeys(['yield']+self.__infolist)
         return self.data[modelID]
     
-    def CheckData(self, removeduds=True):
+    def CheckData(self):
         """Checks for missing data and (by default) removes models where no yield and/or CL information is found.
         """
 
@@ -79,40 +85,64 @@ class SignalRegion:
         CLlessmodels = [] # Has yield, but no CL values
         incompletemodels = [] # Has yield, as well as some (but not all) CL values - only this is OK for plotting
 
+        # Find out how many results we _should_ have
         targetCLnumber = len(self.__infolist)
         
+        # Loop over the data
         for modelID,datum in self.data.iteritems():
 
             try:
+                # Make sure we have a yield
                 hasYield = datum['yield'] is not None
             except TypeError:
+                # Implies that datum has no "yield" key
+                # This should not happen, bail out if it does
                 print 'Urgh:',modelID,datum
                 raise
+
+            # Find out how many CL-like numbers are filled (ie not None)
             numCLs = len([prop for prop in self.__infolist if datum[prop] is not None])
 
             if hasYield:
                 # Maybe OK, let's check the CL values
-                if numCLs == targetCLnumber: continue # OK!
-                elif not numCLs: CLlessmodels.append(modelID)
-                else: incompletemodels.append(modelID)
+                if numCLs == targetCLnumber:
+                    # Perfect, we have all the CL values
+                    continue
+                elif not numCLs:
+                    # No CL values at all, ie no meaningful results
+                    CLlessmodels.append(modelID)
+                else:
+                    # Some, but not all, CL values are filled
+                    incompletemodels.append(modelID)
             else:
-                # Oh dear, this means we cannot plot the data
-                if not numCLs: emptymodels.append(modelID)
-                else: yieldlessmodels.append(modelID)
+                # No evgen yields, this is a problem
+                if not numCLs:
+                    # No CL values either, ie completely empty
+                    emptymodels.append(modelID)
+                else:
+                    # At least one CL value is filled
+                    yieldlessmodels.append(modelID)
         
         def __PrintWarning(modellist, message, removeduds=True):
+            """Helper function to process possible warnings.
+            Bad models (in modellist) are removed from self.data unless removeduds is False.
+            """
 
+            # If the (bad) modellist is empty, everything is OK
             if not modellist:
                 print 'INFO: Checked %s for %s. OK'%(self.name,message)
-                return # We're OK!
+                return
 
+            # If we get here, something is wrong
             print 'WARNING: %s for %i/%s models in %s'%(message,len(modellist),len(self.data),self.name)
             print '\t',modellist,'\n'
+
+            # Remove bad models now, if requested
             if removeduds:
                 for m in modellist: self.data.pop(m)
 
         __PrintWarning(emptymodels, 'empty data')
         __PrintWarning(yieldlessmodels, 'empty yields')
         __PrintWarning(CLlessmodels, 'empty CL data')
-        __PrintWarning(incompletemodels, 'incomplete CL data', False)
+        __PrintWarning(incompletemodels, 'incomplete CL data', False) # Hope for the best and do not remove here
 
