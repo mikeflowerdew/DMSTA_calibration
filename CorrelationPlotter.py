@@ -245,8 +245,20 @@ class CorrelationPlotter:
         # ###########################################
         # Per-SR scatter plots
 
+        # Make a set to keep track of which CL types we have
+        CLtypes = set()
+        # Also, a set for the "real" analysis/SR combinations
+        SRs = set()
+
         # Loop over the correlation graphs
         for analysisSR,graph in self.__correlations.items():
+
+            # Extract and record the CL type and SR name
+            # This is stored at the end of the analysisSR name
+            CLtype = analysisSR.split('_')[-1]
+            CLtypes.add(CLtype)
+            SRname = analysisSR.replace('_'+CLtype,'')
+            SRs.add(SRname)
 
             graph.SetMarkerSize(1)
             graph.SetMarkerStyle(ROOT.kFullCircle)
@@ -351,81 +363,112 @@ class CorrelationPlotter:
             # End of loop over per-SR correlation graphs (scatter plots)
             pass
 
+        # Let's just do a little check
+        if len(self.__fitresults) != len(SRs)*len(CLtypes):
+            print '========================================='
+            print 'ERROR: Somehow %i SRs and %i CL types make %i combinations'%(len(SRs),len(CLtypes),len(self.__fitresults))
+            print 'ERROR: The next bit of code will probably crash'
+            print '========================================='
+
         # ###########################################
         # Summary plots
 
-        # Fit chi^2 summary
-        chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
-                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        # Make a template for all of the histograms
+        plottemplate = ROOT.TH1D('template','',len(SRs),-0.5,len(SRs)-0.5)
 
-        # Fit probability summary
-        probplot = chi2plot.Clone('probplot')
-        probplot.GetYaxis().SetTitle('Fit probability')
+        # Fit chi^2 summary, one for each CL type
+        chi2plots = {}
+        for t in CLtypes:
+            plot = plottemplate.Clone('chi2plot_%s'%(t))
+            plot.GetYaxis().SetTitle('#chi^{2}/Ndof')
+            chi2plots[t] = plot
 
-        # Plots of the fit parameter(s)
-        paramplots = [chi2plot.Clone('param%iplot'%(i)) for i in range(self.__fitresults.values()[0].NPar())]
-        for iplot in range(len(paramplots)):
-            paramplots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
+        # Fit probability summary, one for each CL type
+        probplots = {}
+        for t in CLtypes:
+            plot = plottemplate.Clone('probplot_%s'%(t))
+            plot.GetYaxis().SetTitle('Fit probability')
+            probplots[t] = plot
+
+        # Plots of the fit parameter(s), N for each CL type
+        paramplots = {}
+        for t in CLtypes:
+            plots = [plottemplate.Clone('param%iplot_%s'%(i,t)) for i in range(self.__fitresults.values()[0].NPar())]
+            for iplot in range(len(plots)):
+                plots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
+            paramplots[t] = plots
         
         # Loop over the fit results and fill the summary graphs
-        for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
+        for CLtype in CLtypes:
+            for ibin,analysisSR in enumerate(sorted(SRs)):
 
-            # Use the analysis/SR name as a bin label
-            chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
-            probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
-            for iplot in range(len(paramplots)):
-                paramplots[iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+                # Reconstruct the full key for (eg) self.__fitresults
+                analysisSRkey = '_'.join([analysisSR,CLtype])
 
-            # Check if we have any data at all
-            if self.__fitresults[analysisSR] is None:
-                continue
+                # Use the analysis/SR name as a bin label
+                chi2plots[CLtype].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+                probplots[CLtype].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+                for iplot in range(len(paramplots[CLtype])):
+                    paramplots[CLtype][iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
 
-            # Fill the three plots
-            if self.__fitresults[analysisSR].Ndf():
-                chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
+                # Check if we have any data at all
+                if self.__fitresults[analysisSRkey] is None:
+                    continue
+
+                # Fill the three plots
+                if self.__fitresults[analysisSRkey].Ndf():
+                    chi2plots[CLtype].SetBinContent(ibin+1, self.__fitresults[analysisSRkey].Chi2()/self.__fitresults[analysisSRkey].Ndf())
                 
-            probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
+                probplots[CLtype].SetBinContent(ibin+1, self.__fitresults[analysisSRkey].Prob())
 
-            for iplot in range(len(paramplots)):
-                paramplots[iplot].SetBinContent(ibin+1, abs(self.__fitresults[analysisSR].Value(iplot)))
-                paramplots[iplot].SetBinError(ibin+1, self.__fitresults[analysisSR].Error(iplot))
+                for iplot in range(len(paramplots[CLtype])):
+                    paramplots[CLtype][iplot].SetBinContent(ibin+1, abs(self.__fitresults[analysisSRkey].Value(iplot)))
+                    paramplots[CLtype][iplot].SetBinError(ibin+1, self.__fitresults[analysisSRkey].Error(iplot))
 
-            # End of loop over fit results
+                # End of loop over bins
+            # End of loop over CL types
 
         # Make sure the labels can be read, and adjust the canvas margin to fit
-        chi2plot.GetXaxis().LabelsOption('v')
-        chi2plot.GetXaxis().SetLabelSize(0.03)
-        
-        probplot.GetXaxis().LabelsOption('v')
-        probplot.GetXaxis().SetLabelSize(0.03)
-        
-        for iplot in range(len(paramplots)):
-            paramplots[iplot].GetXaxis().LabelsOption('v')
-            paramplots[iplot].GetXaxis().SetLabelSize(0.03)
+        for plot in chi2plots.values():
+            plot.GetXaxis().LabelsOption('v')
+            plot.GetXaxis().SetLabelSize(0.03)
+
+        for plot in probplots.values():
+            plot.GetXaxis().LabelsOption('v')
+            plot.GetXaxis().SetLabelSize(0.03)
+
+        for plots in paramplots.values():
+            for iplot in range(len(plots)):
+                plots[iplot].GetXaxis().LabelsOption('v')
+                plots[iplot].GetXaxis().SetLabelSize(0.03)
 
         oldmargin = self.__canvas.GetBottomMargin()
         self.__canvas.SetBottomMargin(0.3)
 
-        # Draw the chi^2 plot
-        chi2plot.SetMinimum(0)
-        chi2plot.Draw()
-        ROOT.ATLASLabel(0.5,0.85,"Internal")
-        self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
+        # Draw the chi^2 plots
+        for CLtype,chi2plot in chi2plots.items():
+            chi2plot.SetMinimum(0)
+            chi2plot.Draw()
+            ROOT.ATLASLabel(0.5,0.85,"Internal")
+            self.__canvas.Print('/'.join([outdir,'chi2_%s.pdf'%(CLtype)]))
 
-        # Draw the fit probability plot
-        probplot.SetMinimum(0)
-        probplot.Draw()
-        ROOT.ATLASLabel(0.5,0.85,"Internal")
-        self.__canvas.Print('/'.join([outdir,'prob.pdf']))
+        # Draw the fit probability plots
+        for CLtype,probplot in probplots.items():
+            probplot.SetMinimum(0)
+            probplot.Draw()
+            ROOT.ATLASLabel(0.5,0.85,"Internal")
+            self.__canvas.Print('/'.join([outdir,'prob_%s.pdf'%(CLtype)]))
 
         # Draw the fit parameter plots
-        for iplot in range(len(paramplots)):
-            paramplots[iplot].SetMaximum(2.)
-            paramplots[iplot].Draw()
-            ROOT.ATLASLabel(0.2,0.95,"Internal")
-            self.__canvas.Print('/'.join([outdir,'param%i.pdf('%(iplot)]))
-            self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,'param%i.pdf)'%(iplot)]))
+        for CLtype,plots in paramplots.items():
+            for iplot in range(len(plots)):
+                plots[iplot].SetMaximum(2.)
+                plots[iplot].Draw()
+                ROOT.ATLASLabel(0.2,0.95,"Internal")
+                self.__canvas.Print('/'.join([outdir,'param%i_%s.pdf('%(iplot,CLtype)]))
+                self.__canvas.SetLogy()
+                self.__canvas.Print('/'.join([outdir,'param%i_%s.pdf)'%(iplot,CLtype)]))
+                self.__canvas.SetLogy(0) # Put the scale back to linear
 
         # Reset the canvas in case the method is extended (or the canvas reused)
         self.__canvas.SetBottomMargin(oldmargin)
