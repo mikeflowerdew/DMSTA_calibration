@@ -15,7 +15,7 @@ class DMSTAReader:
     # 2) the values are associated strings used in the ntuple branch names
     analysisdict = {
         # '3L': 'EwkThreeLepton_3L',
-        # '4L': 'EwkFourLepton',
+        '4L': 'EwkFourLepton',
         '2L': 'EwkTwoLepton',
         # '2T': 'EwkTwoTau',
         }
