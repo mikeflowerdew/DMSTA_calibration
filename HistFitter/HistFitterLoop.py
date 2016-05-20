@@ -222,9 +222,14 @@ def RunOneSearch_HistFitter(config, Nsig):
     import os,shutil
     # Remove the directory if it already exists, so we have a clean start
     if os.path.exists(testdir):
-        shutil.rmtree(testdir)
+        shutil.rmtree(testdir, ignore_errors=True) # Without ignore_errors, seems to fail if the dir has subdirectories
+
     # Make the directory(ies)
-    os.makedirs(testdir)
+    # I added a try block due to some weird afs lock issue (so the empty directories remain, despite the rmtree command)
+    try:
+        os.makedirs(testdir)
+    except OSError:
+        pass
 
     # Use the context manager to handle the changing of directory
     with cd(testdir):
@@ -277,6 +282,12 @@ def RunOneSearch_HistFitter(config, Nsig):
         # ########################
         # Step 4: Extract the results
         
+        workspacefile = ROOT.TFile.Open('results/MyUserAnalysis/SplusB_combined_NormalMeasurement_model.root')
+        workspace = workspacefile.Get('combined')
+        
+        fitresult = ROOT.RooStats.get_Pvalue(workspace, True, 5000, 2, 3)
+        print 'The CLs is',fitresult.GetCLs()
+
         NLLfile = ROOT.TFile.Open('results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root')
         
         NLLfunc = NLLfile.Get('nll_mu_Sig')
@@ -289,7 +300,7 @@ def RunOneSearch_HistFitter(config, Nsig):
 
         NLLfile.Close()
     
-    return NLLvalue
+    return NLLvalue,fitresult.GetCLs()
 
 # ########################################################
 # Signal yield scanning strategy
