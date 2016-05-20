@@ -516,7 +516,7 @@ if __name__=='__main__':
             # If we're out of values, give a chance to replenish them
             # If there's nothing left to do, NSigStrategy should return an empty list
             if not YieldValues:
-                YieldValues = NSigStrategy(results, config, logCLs=doLogCLs, logMin=logMin, granularity)
+                YieldValues = NSigStrategy(results, config, logCLs=doLogCLs, logMin=logMin)
                 YieldOrder.append([v for v in YieldValues])
 
             # Crude attempt to avoid an infinite loop
