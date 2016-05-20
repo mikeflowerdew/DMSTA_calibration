@@ -86,7 +86,7 @@ def RunOneSearch_RooStats(config, Nsig):
 
     config should be a PaperResults object, which has all the info I need to set up a simple 1-bin fit,
     while Nsig is the expected number of signal events.
-    The method returns a CLs value, or None if a problem occurred.
+    The method returns a tuple of (CLsObs,CLsExp), or None if a problem occurred.
     """
 
     # Check if the input is OK
@@ -195,8 +195,8 @@ def RunOneSearch_RooStats(config, Nsig):
     # At the end of the "with:" block, the context manager returns us to the original directory
     
     try:
-        # Return the CLs value
-        return result.GetCLs()
+        # Return the CLs values
+        return result.GetCLs(),result.GetCLsexp()
     except:
         # result does not exist, return None to indicate an error
         return None
@@ -489,9 +489,9 @@ if __name__=='__main__':
                 print 'CONFIG NOT OK!!!!'
 
             # Run the fit and record the result if it makes sense
-            CLs = RunOneSearch_RooStats(config, Nsig)
-            if CLs is not None:
-                results.append( (Nsig,CLs) )
+            CLsObs,CLsExp = RunOneSearch_RooStats(config, Nsig)
+            if CLsObs is not None:
+                results.append( (Nsig,CLsObs) )
             
             # If we're out of values, give a chance to replenish them
             # If there's nothing left to do, NSigStrategy should return an empty list

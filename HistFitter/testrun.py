@@ -27,14 +27,15 @@ config.Limit = 4.0
 Nsig = 5.0
 
 # Run the fit!
-CLs_RS = RunOneSearch_RooStats(config, Nsig)
+CLsObs_RS,CLsExp_RS = RunOneSearch_RooStats(config, Nsig)
 
 # Run a second fit with HistFitter
 # I need to change the SR name so the first test directory doesn't get overwritten
 config.SR = 'SR1a'
 LLH_HF = RunOneSearch_HistFitter(config, Nsig)
 
-print 'The CLs result from RooStats is',CLs_RS
+print 'The CLsObs result from RooStats is',CLsObs_RS
+print 'The CLsExp result from RooStats is',CLsExp_RS
 print 'The negative LLH result from HistFitter is',LLH_HF
 
 # Let's do a simple test
