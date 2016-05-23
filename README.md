@@ -78,20 +78,20 @@ The behaviour of `CorrelationPlotter.py` can be altered using command-line optio
 
 This applies the calibration performed in the previous step to the `SummaryNtuple_STA_evgen.root` ntuple produced in step 1. To run the code, just do
 ```bash
-$ ./CombineCLs.py --all
+$ ./CombineCLs.py --all -e
 ```
-The output of this script goes into a new directory called `results/`. You'll notice it actually creates a subdirectory, by default called `smallest_officialMC/` - this allows different setups to be tried without them all overwriting each other (more on this later). The files created in this directory are:
+The output of this script goes into a new directory called `results/`. You'll notice it creates a subdirectory, which changes depending on which command-line options you provide. The files created in this directory are:
 
 * Inputs for the STAs: `STAresults.csv` and `DoNotProcess.txt`. The STAs need **both** files - the latter contains models which have insufficient truth info to process correctly.
 * Plots for the support note: `CLsplot.pdf`, `LogCLsplot.pdf`, `NSRplot.pdf`, and `CLresults.root`.
 * A LaTeX summary of the main results: `SRcountTable.tex`, which can be directly copied to `SupportNote/Tables/` in the SVN area.
 * Some summary information in pickled format: `SRcount.pickle` and `ExclusionCount.pickle`.
 
-The pickle files are a cache of the main results, so that simple changes to the other outputs can be made without rerunning the event loop (ie in seconds rather than minutes). To skip the event loop, simply remove the `--all` argument when you run the script.
+The pickle files are a cache of the main results, so that simple changes to the other outputs can be made without rerunning the event loop (ie in seconds rather than minutes). To skip the event loop, simply remove the `--all` argument when you run the script. If you want to change any of the other options, then typically you have to reinstate `--all`.
 
 Some command line options control exactly how the CLs is computed:
 
-* `-n 10` can be used for testing the event loop, where you only want to run over a few models.
-* `--truthlevel` will use the input from `plots_privateMC/` instead of `plots_officialMC` (assuming you already created it!).
-* `--strategy twosmallest` will multiply the two smallest CLs values together, instead of just using the smallest (which is the default). Other strategies could be added by making changes to `Combiner.__AnalyseModel` in `CombineCLs.py`.
-* `--truncate` replaces all CLs values less than 1e-6 with a value of 1e-6 (after the "strategy" has been applied).
+* `-n 10` can be used for testing the event loop, where you only want to run over a few models. In this case, "_test_" is added to the results directory name.
+* `--truthlevel` will use the input from `plots_privateMC/` instead of `plots_officialMC` (assuming you already created it!). The same name substitution is made in the results directory name.
+* `--strategy twosmallest` will multiply the two smallest CLs values together, instead of just using the smallest (which is the default). This also changes the output directory name in an obvious way. Other strategies could be added by making changes to `Combiner.__AnalyseModel` in `CombineCLs.py`.
+* `--truncate` replaces all CLs values less than 1e-6 with a value of 1e-6 (after the "strategy" has been applied). The word "Truncate" is appended to the strategy name in the output directory name.
