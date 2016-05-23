@@ -19,6 +19,14 @@ class DMSTAReader:
         '2L': 'EwkTwoLepton',
         # '2T': 'EwkTwoTau',
         }
+
+    # Veto reading certain model/SR combinations
+    # This should be used VERY sparingly, but seems to be the only
+    # way to get some SR calibrations to look remotely sensible
+    # analysis/SR strings are the keys, and the lists are the DSIDs to skip for that SR
+    vetodata = {
+        'EwkFourLepton_SR0Z': [255054,254844],
+        }
     
     # Gah, way too many arguments - could fix with slots if I have time
     def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_sim.root',
@@ -163,6 +171,16 @@ class DMSTAReader:
             for datum in data:
 
                 analysisSR = datum.name
+
+                # See if we should skip this entry
+                # Killing the yield info is enough: we don't need to remove the CL values
+                try:
+                    veto = DSID in self.vetodata[analysisSR]
+                    if veto:
+                        continue
+                except KeyError:
+                    # analysisSR not in vetolist: we're OK to go on
+                    pass
 
                 # Get the yield from the official samples
                 truthyield = getattr(entry, '_'.join([branchprefix,'ExpectedEvents',datum.branchname]))
