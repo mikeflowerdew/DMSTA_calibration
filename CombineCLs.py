@@ -321,29 +321,52 @@ class Combiner:
         ExclusionCount = {}
 
         # Plots of the CLs values for all models
-        CLsplot = ROOT.TH1I('CLsplot',';CL_{s};Number of models',100,0,1)
-        CLsplot.SetDirectory(0)
-        LogCLsplot = ROOT.TH1I('LogCLsplot',';log(CL_{s});Number of models',120,-6,0)
-        LogCLsplot.SetDirectory(0)
+        CLsTemplate = ROOT.TH1I('CLsTemplate',';CL_{s};Number of models',100,0,1)
+        LogCLsTemplate = ROOT.TH1I('LogCLsTemplate',';log(CL_{s});Number of models',120,-6,0)
 
-        # Plots of the CLs values for "valid" models (ie within the calibration function range)
-        CLsplot_valid = ROOT.TH1I('CLsplot_valid',';CL_{s};Number of models',100,0,1)
-        CLsplot_valid.SetDirectory(0)
-        LogCLsplot_valid = ROOT.TH1I('LogCLsplot_valid',';log(CL_{s});Number of models',120,-6,0)
-        LogCLsplot_valid.SetDirectory(0)
+        class CLsPlots:
+            """Convenient holder of all CLs plots."""
 
+            def __init__(self, xaxisprefix='', CLstype='CLs', namesuffix=''):
+
+                # Plots of the observed CLs and its logarithm
+                self.CLs    = self.__makeHistogram(      CLstype+namesuffix, xaxisprefix)
+                self.LogCLs = self.__makeHistogram('Log'+CLstype+namesuffix, xaxisprefix)
+
+                # Plots of the CLs values for "valid" models (ie within the calibration function range)
+                self.CLs_valid    = self.__makeHistogram(      CLstype+'_valid'+namesuffix, xaxisprefix)
+                self.LogCLs_valid = self.__makeHistogram('Log'+CLstype+'_valid'+namesuffix, xaxisprefix)
+
+            @classmethod
+            def __makeHistogram(cls, newname, xaxisprefix=''):
+                result = LogCLsTemplate.Clone(newname) if newname.startswith('Log') else CLsTemplate.Clone(newname)
+                result.SetDirectory(0)
+                if xaxisprefix:
+                    result.GetXaxis().SetTitle( ' '.join([xaxisprefix,result.GetXaxis().GetTitle()]) )
+                return result
+
+            def fill(self, CLresult):
+
+                self.CLs.Fill(CLresult.value)
+                self.LogCLs.Fill(math.log10(CLresult.value))
+                if CLresult.valid:
+                    self.CLs_valid.Fill(CLresult.value)
+                    self.LogCLs_valid.Fill(math.log10(CLresult.value))
+
+            def write(self):
+
+                self.CLs.Write()
+                self.LogCLs.Write()
+                self.CLs_valid.Write()
+                self.LogCLs_valid.Write()
+
+        # Plots of the observed CLs
+        ObsCLsPlots = CLsPlots('Observed', 'CLsObs')
+        ObsCLsSRPlots = {} # One plot per best SR
         if self.useexpected:
-            # Plots of the CLs values for all models
-            CLsExpplot = ROOT.TH1I('CLsExpplot',';Expected CL_{s};Number of models',100,0,1)
-            CLsExpplot.SetDirectory(0)
-            LogCLsExpplot = ROOT.TH1I('LogCLsExpplot',';Expected log(CL_{s});Number of models',120,-6,0)
-            LogCLsExpplot.SetDirectory(0)
-
-            # Plots of the CLs values for "valid" models (ie within the calibration function range)
-            CLsExpplot_valid = ROOT.TH1I('CLsExpplot_valid',';Expected CL_{s};Number of models',100,0,1)
-            CLsExpplot_valid.SetDirectory(0)
-            LogCLsExpplot_valid = ROOT.TH1I('LogCLsExpplot_valid',';Expected log(CL_{s});Number of models',120,-6,0)
-            LogCLsExpplot_valid.SetDirectory(0)
+            # Plots of the expected CLs
+            ExpCLsPlots = CLsPlots('Expected', 'CLsExp')
+            ExpCLsSRPlots = {} # One plot per best SR
 
         # How many SRs were used? Absolute maximum of 42 :D
         NSRplot = ROOT.TH1I('NSRplot',';Number of active SRs;Number of models',43,-0.5,42.5)
@@ -382,22 +405,29 @@ class Combiner:
 
             outfile.write('%i,%6e\n'%(modelName,CLresult.value))
 
-            CLsplot.Fill(CLresult.value)
-            LogCLsplot.Fill(math.log10(CLresult.value))
+            ObsCLsPlots.fill(CLresult)
+            if bestSR:
+                try:
+                    ObsCLsSRPlots[bestSR].fill(CLresult)
+                except KeyError:
+                    ObsCLsSRPlots[bestSR] = CLsPlots('Observed', 'CLsObs', bestSR)
+                    ObsCLsSRPlots[bestSR].fill(CLresult)
+
             NSRplot.Fill(len(CLresults))
             if CLresult.value < 1.: # This would be zero by default
                 NSRplots[int(CLresult.value/0.05)].Fill(len(CLresults))
-            if CLresult.valid:
-                CLsplot_valid.Fill(CLresult.value)
-                LogCLsplot_valid.Fill(math.log10(CLresult.value))
 
             if self.useexpected and bestSR:
+
                 CLsExp = CLresultsExp[bestSR]
-                CLsExpplot.Fill(CLsExp.value)
-                LogCLsExpplot.Fill(math.log10(CLsExp.value))
-                if CLsExp.valid:
-                    CLsExpplot_valid.Fill(CLsExp.value)
-                    LogCLsExpplot_valid.Fill(math.log10(CLsExp.value))
+                ExpCLsPlots.fill(CLsExp)
+
+                if bestSR:
+                    try:
+                        ExpCLsSRPlots[bestSR].fill(CLsExp)
+                    except KeyError:
+                        ExpCLsSRPlots[bestSR] = CLsPlots('Expected', 'CLsExp', bestSR)
+                        ExpCLsSRPlots[bestSR].fill(CLsExp)
 
             bestSRkey = bestSR if bestSR else ''
             try:
@@ -418,15 +448,14 @@ class Combiner:
 
         # Save the results
         outfile = ROOT.TFile.Open('/'.join([outdirname,'CLresults.root']),'RECREATE')
-        CLsplot.Write()
-        LogCLsplot.Write()
-        CLsplot_valid.Write()
-        LogCLsplot_valid.Write()
+        ObsCLsPlots.write()
         if self.useexpected:
-            CLsExpplot.Write()
-            LogCLsExpplot.Write()
-            CLsExpplot_valid.Write()
-            LogCLsExpplot_valid.Write()
+            ExpCLsPlots.write()
+        for p in ObsCLsSRPlots.values():
+            p.write()
+        if self.useexpected:
+            for p in ExpCLsSRPlots.values():
+                p.write()
         NSRplot.Write()
         for p in NSRplots:
             p.Write()
@@ -452,34 +481,34 @@ class Combiner:
         canvas = ROOT.TCanvas('can','can',800,600)
         infile = ROOT.TFile.Open('/'.join([dirname,'CLresults.root']))
 
-        CLsplot = infile.Get('CLsplot')
-        CLsplot_valid = infile.Get('CLsplot_valid')
+        CLsObsPlot = infile.Get('CLsObs')
+        CLsObsPlot_valid = infile.Get('CLsObs_valid')
         
-        CLsplot_valid.SetFillColor(ROOT.kBlue)
-        CLsplot_valid.SetLineWidth(0)
-        CLsplot_valid.Draw()
-        CLsplot.Draw('same')
+        CLsObsPlot_valid.SetFillColor(ROOT.kBlue)
+        CLsObsPlot_valid.SetLineWidth(0)
+        CLsObsPlot_valid.Draw()
+        CLsObsPlot.Draw('same')
         
         ROOT.ATLASLabel(0.3,0.85,"Internal")
         ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
-        ROOT.myBoxText(0.3,0.75,0.02,CLsplot_valid.GetFillColor(),'Non-extrapolated models')
+        ROOT.myBoxText(0.3,0.75,0.02,CLsObsPlot_valid.GetFillColor(),'Non-extrapolated models')
 
-        canvas.Print('/'.join([dirname,'CLsplot.pdf']))
+        canvas.Print('/'.join([dirname,'CLsObsPlot.pdf']))
         
-        LogCLsplot = infile.Get('LogCLsplot')
-        LogCLsplot_valid = infile.Get('LogCLsplot_valid')
+        LogCLsObsPlot = infile.Get('LogCLsObs')
+        LogCLsObsPlot_valid = infile.Get('LogCLsObs_valid')
         
-        LogCLsplot_valid.SetFillColor(ROOT.kBlue)
-        LogCLsplot_valid.SetLineWidth(0)
-        LogCLsplot_valid.Draw()
-        LogCLsplot.Draw('same')
+        LogCLsObsPlot_valid.SetFillColor(ROOT.kBlue)
+        LogCLsObsPlot_valid.SetLineWidth(0)
+        LogCLsObsPlot_valid.Draw()
+        LogCLsObsPlot.Draw('same')
         
         ROOT.ATLASLabel(0.3,0.85,"Internal")
         ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
-        ROOT.myBoxText(0.3,0.75,0.02,CLsplot_valid.GetFillColor(),'Non-extrapolated models')
+        ROOT.myBoxText(0.3,0.75,0.02,CLsObsPlot_valid.GetFillColor(),'Non-extrapolated models')
 
         canvas.SetLogy()
-        canvas.Print('/'.join([dirname,'LogCLsplot.pdf']))
+        canvas.Print('/'.join([dirname,'LogCLsObsPlot.pdf']))
         canvas.SetLogy(0)
 
         NSRname = '/'.join([dirname,'NSRplot.pdf'])
@@ -494,9 +523,9 @@ class Combiner:
         canvas.Print(NSRname+']')
 
         # Add some useful printout too
-        Ninvalid = CLsplot.Integral() - CLsplot_valid.Integral()
+        Ninvalid = CLsObsPlot.Integral() - CLsObsPlot_valid.Integral()
         print 'Number of invalid models :',Ninvalid
-        Nexcluded = CLsplot.Integral(0,CLsplot.GetXaxis().FindBin(0.049))
+        Nexcluded = CLsObsPlot.Integral(0,CLsObsPlot.GetXaxis().FindBin(0.049))
         print 'Number of excluded models:',Nexcluded
 
     def LatexSummary(self, dirname):
