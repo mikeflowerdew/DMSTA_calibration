@@ -358,7 +358,7 @@ class DMSTAReader:
         return SRname
     
     def __SetupFitFunc(self, SRobj):
-        """Sets up fitting function, to avoid duplication in the
+        """Sets up fitting functions, to avoid duplication in the
         YAML and pMSSM file-reading methods.
         Could be extended to SR-specific configs using SRobj.name
         """
@@ -423,21 +423,22 @@ class DMSTAReader:
         # Check first if we have anything to configure
         if not self.__hffile:
             return
-        # Extract HistFitter curve from the root file
+        # Extract HistFitter curves from the root file
         funcfile = ROOT.TFile.Open(self.__hffile)
 
         if funcfile and not funcfile.IsZombie():
 
-            # Extracting the TF1 object directly doesn't seem to work,
+            # Extracting the TF1 objects directly doesn't seem to work,
             # as the normalisation parameter becomes fixed.
-            # So, extract the graph object instead and recreate the TF1.
+            # So, extract the graph objects instead and recreate the TF1.
             # The real SR name is from "SR" to the end.
             shortSRname = SRobj.name[SRobj.name.index('SR'):]
-            graph = funcfile.Get(shortSRname+'_graph')
+            graphObs = funcfile.Get(shortSRname+'_graphObs')
+            graphExp = funcfile.Get(shortSRname+'_graphExp')
 
             # FIXME: hard-coded -6...
-            SRobj.fitfunctions['LogCLsObs'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
-            SRobj.fitfunctions['LogCLsExp'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
+            SRobj.fitfunctions['LogCLsObs'] = ROOT.TF1('fitfunc', lambda x,p: graphObs.Eval(x[0])/p[0], -6, 0, 1)
+            SRobj.fitfunctions['LogCLsExp'] = ROOT.TF1('fitfunc', lambda x,p: graphExp.Eval(x[0])/p[0], -6, 0, 1)
 
             # Extract the TF1 object - does not work.
             # SRobj.fitfunctions['LogCLsObs'] = funcfile.Get(shortSRname)
