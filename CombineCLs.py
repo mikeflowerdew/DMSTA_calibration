@@ -75,11 +75,38 @@ class Combiner:
         # Some other configurable options
         self.strategy = 'smallest'
         self.truncate = False
+        self.useexpected = False
+
+    @classmethod
+    def __FixXrange(cls, graph):
+        """Fixes the x-axis range for a calibration graph.
+        The range is [0,1] for a linear scale, and [-6,0] for a log scale.
+        In the case of a log scale, the original minimum is stored under graph.xmin
+        """
+
+        # Retrieve the x-axis minimum, extend the range back down to zero
+        graph.xmin = graph.GetXmin()
+        # Test for linear or log x-axis scale
+        if graph.xmin >= 0:
+            # Linear
+            graph.SetRange(0,graph.GetXmax())
+        else:
+            # Logarithmic
+            graph.SetRange(-6,0)
+            graph.xmin = math.pow(10,graph.xmin) # Convert back to linear scale
+
+        # Nothing more to do
+        return
 
     def ReadCalibrations(self, calibfilename):
-        """Reads all TF1 objects and stores them."""
+        """Reads all TF1 objects and stores them in self.CalibCurves.
+        This is a dictionary, with entries either like {SRname: CL_graph}.
+        Another dictionary, self.CalibCurvesExp, stores the expected fit results,
+        if they are found in the file.
+        """
 
         self.CalibCurves = {}
+        self.CalibCurvesExp = {}
 
         calibfile = ROOT.TFile.Open(calibfilename)
 
@@ -93,22 +120,20 @@ class Combiner:
             if not thing.InheritsFrom('TF1'):
                 continue
 
-            # Retrieve the x-axis minimum, extend the range back down to zero
-            thing.xmin = thing.GetXmin()
-            # Test for linear or log x-axis scale
-            if thing.xmin >= 0:
-                # Linear
-                thing.SetRange(0,thing.GetXmax())
-            else:
-                # Logarithmic
-                thing.SetRange(-6,0)
-                thing.xmin = math.pow(10,thing.xmin) # Convert back to linear scale
+            # This is a graph we want!
+
+            # Fix its x-axis range
+            self.__FixXrange(thing)
             
             # The graph names come with the CL type
             # separated from the analysis/SR by an underscore
             analysisSR = '_'.join(keyname.split('_')[:-1])
-            
-            self.CalibCurves[analysisSR] = thing
+
+            # Work out if this is an expected or an observed result
+            if 'Exp' in keyname:
+                self.CalibCurvesExp[analysisSR] = thing
+            else:
+                self.CalibCurves[analysisSR] = thing
 
         calibfile.Close()
 
@@ -119,8 +144,35 @@ class Combiner:
         This can raise a DoNotProcessError if the truth yields are not present."""
 
         results = {}
+        resultsExp = {}
         negativeYieldList = []
 
+        def GetCLs(graph, truthyield):
+            """Small helper function to extract a valid CLs from a TGraph.
+            If the number is out of the valid range, then None is returned.
+            """
+
+            result = CLs(graph.GetX(truthyield))
+
+            # If on a linear scale, check if the CLs value is within the valid range
+            if graph.GetXmin() >= 0 and result.value >= 0.999*graph.GetXmax():
+                # Too high
+                return None
+            # Similar range check for a log scale
+            if graph.GetXmin() < 0 and math.log10(result.value) >= graph.GetXmax():
+                return None
+
+            # Compare the CLs to our self-imposed minimum
+            if result.value < graph.xmin:
+                # This message prints out A LOT
+                # print 'WARNING in CombineCLs: %s has CLs = %f below the min of %s'%(analysisSR,CLs,graph.xmin)
+
+                result.valid = False
+                result.ratio = result.value/graph.xmin
+
+            return result
+
+        # Start the event loop
         for analysisSR,graph in self.CalibCurves.items():
 
             # slow, slow, slow, but I guess OK for now
@@ -130,25 +182,30 @@ class Combiner:
                 negativeYieldList.append(analysisSR)
                 continue
 
-            number = CLs(graph.GetX(truthyield))
-
-            # If on a linear scale, check if the CLs value is within the valid range
-            if graph.GetXmin() >= 0 and number.value >= 0.999*graph.GetXmax():
-                # Too high
-                continue
-            # Similar range check for a log scale
-            if graph.GetXmin() < 0 and math.log10(number.value) >= graph.GetXmax():
+            # Get the main result
+            number = GetCLs(graph, truthyield)
+            if number is None:
                 continue
 
-            results[analysisSR] = number
-            
-            # Compare the CLs to our self-imposed minimum
-            if number.value < graph.xmin:
-                # This message prints out A LOT
-                # print 'WARNING in CombineCLs: %s has CLs = %f below the min of %s'%(analysisSR,CLs,graph.xmin)
-                
-                number.valid = False
-                number.ratio = number.value/graph.xmin
+            if self.useexpected:
+                # See if we have the corresponding expected result
+                try:
+                    graphExp = self.CalibCurvesExp[analysisSR]
+                except KeyError:
+                    # Only write the results out if we have the expected results
+                    continue
+
+                numberExp = GetCLs(graphExp, truthyield)
+                if numberExp is None:
+                    continue
+
+                # We have both expected+observed results, so this is looking OK
+                results[analysisSR] = number
+                resultsExp[analysisSR] = numberExp
+
+            else:
+                # self.useexpected == False
+                results[analysisSR] = number
 
             # print '%40s: %.3f events, CLs = %s, log(CLs) = %.2f'%(analysisSR,truthyield,number,math.log10(number.value))
             # if number.value < 1e-3:
@@ -196,22 +253,31 @@ class Combiner:
                 pass
 
         if results:
-            resultkey = min(results, key=results.get) # keep a record of the best SR no matter what
+
+            # Find the best SR
+            if self.useexpected:
+                resultkey = min(resultsExp, key=results.get)
+            else:
+                resultkey = min(results, key=results.get)
             # FIXME: Use results[resultkey] to find if CLs < 0.05
 
             # What we do next depends on the CLs combination strategy
             if self.strategy == 'smallest':
-                # Copy the smallest result, in case we truncate it later
+                # Take only the best result
+                # This is a copy constructor, as result might be truncated later
                 result = CLs(results[resultkey])
+
             elif self.strategy == 'twosmallest':
-                sortedkeys = sorted(results, key=results.get)[:2]
+                # Now we need to sort the whole list
+                if self.useexpected:
+                    sortedkeys = sorted(resultsExp, key=results.get)[:2]
+                else:
+                    sortedkeys = sorted(results, key=results.get)[:2]
+                # Find the observed CLs from the two best results
                 mylist = [results[k] for k in sortedkeys]
                 result = reduce(lambda x,y: x*y, mylist, CLs(1.))
 
-                # Crazy test inserted to double-check the code
-                if len(mylist) > 1:
-                    assert(result.value == mylist[0].value*mylist[1].value)
-
+            # However we got the result, truncate it now if necessary
             if self.truncate and result.value < 1e-6:
                 result.value = 1e-6
 
@@ -544,6 +610,11 @@ if __name__ == '__main__':
         dest = "truncate",
         help = "Truncate CLs values below 1e-6")
     parser.add_argument(
+        "-e", "--useexpected",
+        action = 'store_true',
+        dest = "useexpected",
+        help = "Use expected CLs to determine the best results")
+    parser.add_argument(
         "-n", "--nmodels",
         type = int,
         dest = "nmodels",
@@ -570,6 +641,10 @@ if __name__ == '__main__':
         subdirname += '_privateMC'
     else:
         subdirname += '_officialMC'
+    if cmdlinearguments.useexpected:
+        subdirname += '_bestExpected'
+    else:
+        subdirname += '_bestObserved'
     outdirname = '/'.join(['results',subdirname])
     if cmdlinearguments.nmodels:
         outdirname += '_test'
@@ -580,6 +655,7 @@ if __name__ == '__main__':
     if cmdlinearguments.all:
         obj.strategy = cmdlinearguments.strategy
         obj.truncate = cmdlinearguments.truncate
+        obj.useexpected = cmdlinearguments.useexpected
         obj.ReadNtuple(outdirname, cmdlinearguments.nmodels)
     obj.PlotSummary(outdirname)
     obj.LatexSummary(outdirname)
