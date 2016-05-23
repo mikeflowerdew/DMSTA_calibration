@@ -290,7 +290,7 @@ class Combiner:
             result = CLs(1.)
             result.valid = False        
         
-        return result,resultkey,results
+        return result,resultkey,results,resultsExp
 
     def ReadNtuple(self, outdirname, Nmodels=None):
         """Read all truth yields, record the estimated CLs values.
@@ -325,12 +325,25 @@ class Combiner:
         CLsplot.SetDirectory(0)
         LogCLsplot = ROOT.TH1I('LogCLsplot',';log(CL_{s});Number of models',120,-6,0)
         LogCLsplot.SetDirectory(0)
-        
+
         # Plots of the CLs values for "valid" models (ie within the calibration function range)
         CLsplot_valid = ROOT.TH1I('CLsplot_valid',';CL_{s};Number of models',100,0,1)
         CLsplot_valid.SetDirectory(0)
         LogCLsplot_valid = ROOT.TH1I('LogCLsplot_valid',';log(CL_{s});Number of models',120,-6,0)
         LogCLsplot_valid.SetDirectory(0)
+
+        if self.useexpected:
+            # Plots of the CLs values for all models
+            CLsExpplot = ROOT.TH1I('CLsExpplot',';Expected CL_{s};Number of models',100,0,1)
+            CLsExpplot.SetDirectory(0)
+            LogCLsExpplot = ROOT.TH1I('LogCLsExpplot',';Expected log(CL_{s});Number of models',120,-6,0)
+            LogCLsExpplot.SetDirectory(0)
+
+            # Plots of the CLs values for "valid" models (ie within the calibration function range)
+            CLsExpplot_valid = ROOT.TH1I('CLsExpplot_valid',';Expected CL_{s};Number of models',100,0,1)
+            CLsExpplot_valid.SetDirectory(0)
+            LogCLsExpplot_valid = ROOT.TH1I('LogCLsExpplot_valid',';Expected log(CL_{s});Number of models',120,-6,0)
+            LogCLsExpplot_valid.SetDirectory(0)
 
         # How many SRs were used? Absolute maximum of 42 :D
         NSRplot = ROOT.TH1I('NSRplot',';Number of active SRs;Number of models',43,-0.5,42.5)
@@ -362,7 +375,7 @@ class Combiner:
                 print '============== Model',modelName
 
             try:
-                CLresult,bestSR,CLresults = self.__AnalyseModel(entry)
+                CLresult,bestSR,CLresults,CLresultsExp = self.__AnalyseModel(entry)
             except DoNotProcessError:
                 badmodelfile.write('%i\n'%(modelName))
                 continue
@@ -377,6 +390,14 @@ class Combiner:
             if CLresult.valid:
                 CLsplot_valid.Fill(CLresult.value)
                 LogCLsplot_valid.Fill(math.log10(CLresult.value))
+
+            if self.useexpected and bestSR:
+                CLsExp = CLresultsExp[bestSR]
+                CLsExpplot.Fill(CLsExp.value)
+                LogCLsExpplot.Fill(math.log10(CLsExp.value))
+                if CLsExp.valid:
+                    CLsExpplot_valid.Fill(CLsExp.value)
+                    LogCLsExpplot_valid.Fill(math.log10(CLsExp.value))
 
             bestSRkey = bestSR if bestSR else ''
             try:
@@ -401,6 +422,11 @@ class Combiner:
         LogCLsplot.Write()
         CLsplot_valid.Write()
         LogCLsplot_valid.Write()
+        if self.useexpected:
+            CLsExpplot.Write()
+            LogCLsExpplot.Write()
+            CLsExpplot_valid.Write()
+            LogCLsExpplot_valid.Write()
         NSRplot.Write()
         for p in NSRplots:
             p.Write()
