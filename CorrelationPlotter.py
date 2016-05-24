@@ -144,6 +144,12 @@ class CorrelationPlotter:
                     # Compute and store the error on the fit
                     graph.fiterrorgraph = dataobj.FitErrorGraph(graph)
 
+                else:
+                    # If the graph is empty, set flags to indicate a lack of fit
+                    graph.goodfit = False
+                    graph.fiterrorgraph = None
+                    self.__fitresults[graphkey] = None
+
                 # End of loop over different CL types
                 pass
 
@@ -393,10 +399,15 @@ class CorrelationPlotter:
         # Plots of the fit parameter(s), N for each CL type
         paramplots = {}
         for t in CLtypes:
-            plots = [plottemplate.Clone('param%iplot_%s'%(i,t)) for i in range(self.__fitresults.values()[0].NPar())]
-            for iplot in range(len(plots)):
-                plots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
-            paramplots[t] = plots
+            # In some unusual configurations, it's possible that the fitresults are not properly populated,
+            # so check this now, in order to avoid a crash
+            if self.__fitresults.values()[0]:
+                plots = [plottemplate.Clone('param%iplot_%s'%(i,t)) for i in range(self.__fitresults.values()[0].NPar())]
+                for iplot in range(len(plots)):
+                    plots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
+                paramplots[t] = plots
+            else:
+                paramplots[t] = []
         
         # Loop over the fit results and fill the summary graphs
         for CLtype in CLtypes:

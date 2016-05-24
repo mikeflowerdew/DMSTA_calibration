@@ -316,9 +316,9 @@ class Combiner:
         # Some stuff for record-keeping
 
         # SR:count - the key SR was the best SR in count models
-        SRcount = {}
+        SRcount = {'total': 0}
         # Same thing, but only if CLs < 5% (best SR not required)
-        ExclusionCount = {}
+        ExclusionCount = {'total': 0}
 
         # Plots of the CLs values for all models
         CLsTemplate = ROOT.TH1I('CLsTemplate',';CL_{s};Number of models',100,0,1)
@@ -430,13 +430,18 @@ class Combiner:
                         ExpCLsSRPlots[bestSR].fill(CLsExp)
 
             bestSRkey = bestSR if bestSR else ''
+
+            if bestSRkey:
+                SRcount['total'] += 1
             try:
                 SRcount[bestSRkey] += 1
             except KeyError:
                 SRcount[bestSRkey] = 1
 
+            if CLresult.value < 0.05:
+                ExclusionCount['total'] += 1
             for k,v in CLresults.items():
-                if v.valid and v.value < 0.05:
+                if v.value < 0.05:
                     try:
                         ExclusionCount[k] += 1
                     except KeyError:
@@ -634,6 +639,9 @@ class Combiner:
             elif 'lowMT2' in SR:
                 latexSR = 'SR-DS-lowMass'
             writeLine('2$\\tau$ '+latexSR, SR)
+
+        latexfile.write('\\midrule\n')
+        writeLine('All SRs', 'total')
 
         # Finish the file off
         latexfile.write('\\bottomrule\n')

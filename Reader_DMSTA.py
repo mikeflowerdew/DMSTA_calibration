@@ -17,7 +17,7 @@ class DMSTAReader:
         '3L': 'EwkThreeLepton_3L',
         '4L': 'EwkFourLepton',
         '2L': 'EwkTwoLepton',
-        # '2T': 'EwkTwoTau',
+        '2T': 'EwkTwoTau',
         }
 
     # Veto reading certain model/SR combinations
@@ -324,18 +324,24 @@ class DMSTAReader:
                 modelpoint = int(splitline[0])
             except ValueError:
                 continue # Line of text
-            
+
+            try:
+                CLsExp  = float(splitline[7])
+            except IndexError:
+                # In this specific case, this might be OK,
+                # if expected CLs values have not yet been provided
+                CLsExp = None
+
             try:
                 # Find all the input data first
                 CLbObs  = float(splitline[1])
                 CLsbObs = float(splitline[4])
-                CLsExp  = float(splitline[7])
             except:
                 print 'WARNING: Malformed line in %s: %s'%(fname,line)
                 # Carry on, hopefully we can just analyse the other results
                 continue
 
-            # Check that either CLsb or CLb were read OK
+            # Check that at least something was read in OK
             if CLbObs is None and CLsbObs is None and CLsExp is None: continue
 
             if not CLbObs and CLbObs is not None:
@@ -472,10 +478,10 @@ class DMSTAReader:
             SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
 
             # Special case(s)
-            if 'SR0Z' in SRobj.name:
-                # SRobj.fitfunctions['LogCLsObs'].SetRange(-6, -0.6)
-                SRobj.fitfunctions['LogCLsObs'].xmax = -0.6
-                SRobj.fitfunctions['LogCLsExp'].xmax = -0.6
+            # Now left just as an example
+            # if 'SR0Z' in SRobj.name:
+            #     SRobj.fitfunctions['LogCLsObs'].xmax = -0.6
+            #     SRobj.fitfunctions['LogCLsExp'].xmax = -0.6
 
             SRobj.GoodFit = GoodFit
             SRobj.FitErrorGraph = FitErrorGraph
