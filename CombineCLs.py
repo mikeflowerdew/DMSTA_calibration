@@ -316,9 +316,16 @@ class Combiner:
         # Some stuff for record-keeping
 
         # SR:count - the key SR was the best SR in count models
-        SRcount = {'total': 0}
+        # And also some other useful information
+        SRcount = {'total': 0, # Total number of models with at least 1 sensitive SR
+                   'CLs1' : 0, # Total number of models with _no_ sensitive SR
+                   'rounded': 0, # Models with a sensitive SR, but CLs=1.00 is given to STAs due to rounding
+                   'STA': 0, # Number of results actually given to the STAs (should be "total"+"CLs1")
+                   }
         # Same thing, but only if CLs < 5% (best SR not required)
-        ExclusionCount = {'total': 0}
+        ExclusionCount = {'total': 0, # Total number of models excluded by the STA procedure
+                          'total_any': 0, # Total number of models excluded by any SR (cross-check to compare to best expected SR)
+                          }
 
         # Plots of the CLs values for all models
         CLsTemplate = ROOT.TH1I('CLsTemplate',';CL_{s};Number of models',100,0,1)
@@ -329,13 +336,15 @@ class Combiner:
 
             def __init__(self, xaxisprefix='', CLstype='CLs', namesuffix=''):
 
+                if namesuffix and not namesuffix.startswith('_'):
+                    namesuffix = '_'+namesuffix
                 # Plots of the observed CLs and its logarithm
                 self.CLs    = self.__makeHistogram(      CLstype+namesuffix, xaxisprefix)
                 self.LogCLs = self.__makeHistogram('Log'+CLstype+namesuffix, xaxisprefix)
 
                 # Plots of the CLs values for "valid" models (ie within the calibration function range)
-                self.CLs_valid    = self.__makeHistogram(      CLstype+'_valid'+namesuffix, xaxisprefix)
-                self.LogCLs_valid = self.__makeHistogram('Log'+CLstype+'_valid'+namesuffix, xaxisprefix)
+                self.CLs_valid    = self.__makeHistogram(      CLstype+namesuffix+'_valid', xaxisprefix)
+                self.LogCLs_valid = self.__makeHistogram('Log'+CLstype+namesuffix+'_valid', xaxisprefix)
 
             @classmethod
             def __makeHistogram(cls, newname, xaxisprefix=''):
@@ -404,6 +413,7 @@ class Combiner:
                 continue
 
             outfile.write('%i,%6e\n'%(modelName,CLresult.value))
+            SRcount['STA'] += 1
 
             ObsCLsPlots.fill(CLresult)
             if bestSR:
@@ -433,6 +443,11 @@ class Combiner:
 
             if bestSRkey:
                 SRcount['total'] += 1
+                if '+' in '%6e'%(CLresult.value):
+                    SRcount['rounded'] += 1
+            else:
+                SRcount['CLs1'] += 1
+
             try:
                 SRcount[bestSRkey] += 1
             except KeyError:
@@ -440,12 +455,16 @@ class Combiner:
 
             if CLresult.value < 0.05:
                 ExclusionCount['total'] += 1
+            anyExcluded = False
             for k,v in CLresults.items():
                 if v.value < 0.05:
+                    anyExcluded = True
                     try:
                         ExclusionCount[k] += 1
                     except KeyError:
                         ExclusionCount[k] = 1
+            if anyExcluded:
+                ExclusionCount['total_any'] += 1
 
         outfile.close()
         badmodelfile.close()
@@ -467,7 +486,10 @@ class Combiner:
         outfile.Close()
 
         from pprint import pprint
+        print '================== Printing the SRcount results'
         pprint(SRcount)
+        print '================== Printing the ExclusionCount results'
+        pprint(ExclusionCount)
 
         # Pickle the SR count results, to make a nice table later
         SRcountFile = open('/'.join([outdirname,'SRcount.pickle']), 'w')
@@ -486,35 +508,26 @@ class Combiner:
         canvas = ROOT.TCanvas('can','can',800,600)
         infile = ROOT.TFile.Open('/'.join([dirname,'CLresults.root']))
 
-        CLsObsPlot = infile.Get('CLsObs')
-        CLsObsPlot_valid = infile.Get('CLsObs_valid')
-        
-        CLsObsPlot_valid.SetFillColor(ROOT.kBlue)
-        CLsObsPlot_valid.SetLineWidth(0)
-        CLsObsPlot_valid.Draw()
-        CLsObsPlot.Draw('same')
-        
-        ROOT.ATLASLabel(0.3,0.85,"Internal")
-        ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
-        ROOT.myBoxText(0.3,0.75,0.02,CLsObsPlot_valid.GetFillColor(),'Non-extrapolated models')
+        def CLsPlot_withInvalid(basename, logY=False):
 
-        canvas.Print('/'.join([dirname,'CLsObsPlot.pdf']))
+            CLsPlot = infile.Get(basename)
+            CLsPlot_valid = infile.Get(basename+'_valid')
         
-        LogCLsObsPlot = infile.Get('LogCLsObs')
-        LogCLsObsPlot_valid = infile.Get('LogCLsObs_valid')
+            CLsPlot_valid.SetFillColor(ROOT.kBlue)
+            CLsPlot_valid.SetLineWidth(0)
+            CLsPlot_valid.Draw()
+            CLsPlot.Draw('same')
         
-        LogCLsObsPlot_valid.SetFillColor(ROOT.kBlue)
-        LogCLsObsPlot_valid.SetLineWidth(0)
-        LogCLsObsPlot_valid.Draw()
-        LogCLsObsPlot.Draw('same')
-        
-        ROOT.ATLASLabel(0.3,0.85,"Internal")
-        ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
-        ROOT.myBoxText(0.3,0.75,0.02,CLsObsPlot_valid.GetFillColor(),'Non-extrapolated models')
+            ROOT.ATLASLabel(0.3,0.85,"Internal")
+            ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
+            ROOT.myBoxText(0.3,0.75,0.02,CLsPlot_valid.GetFillColor(),'Non-extrapolated models')
 
-        canvas.SetLogy()
-        canvas.Print('/'.join([dirname,'LogCLsObsPlot.pdf']))
-        canvas.SetLogy(0)
+            canvas.SetLogy(logY)
+            canvas.Print('/'.join([dirname,basename+'Plot.pdf']))
+            canvas.SetLogy(0) # Always revert to a linear scale
+
+        CLsPlot_withInvalid('CLsObs')
+        CLsPlot_withInvalid('LogCLsObs', True)
 
         NSRname = '/'.join([dirname,'NSRplot.pdf'])
         NSRplot = infile.Get('NSRplot')
@@ -528,6 +541,8 @@ class Combiner:
         canvas.Print(NSRname+']')
 
         # Add some useful printout too
+        CLsObsPlot = infile.Get('CLsObs')
+        CLsObsPlot_valid = infile.Get('CLsObs_valid')
         Ninvalid = CLsObsPlot.Integral() - CLsObsPlot_valid.Integral()
         print 'Number of invalid models :',Ninvalid
         Nexcluded = CLsObsPlot.Integral(0,CLsObsPlot.GetXaxis().FindBin(0.049))
