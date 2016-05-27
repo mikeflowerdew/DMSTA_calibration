@@ -412,7 +412,12 @@ class Combiner:
                 badmodelfile.write('%i\n'%(modelName))
                 continue
 
-            outfile.write('%i,%6e\n'%(modelName,CLresult.value))
+            # This could definitely be done in a more clever way, but let's just get it done
+            nonBestSRs = []
+            for k,v in CLresults.items():
+                if v.value < 0.05 and k != bestSR:
+                    nonBestSRs.append(k)
+            outfile.write('%i,%6e,%s,%s\n'%(modelName,CLresult.value,bestSR,','.join(nonBestSRs)))
             SRcount['STA'] += 1
 
             ObsCLsPlots.fill(CLresult)
