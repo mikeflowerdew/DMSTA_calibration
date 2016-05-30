@@ -287,7 +287,8 @@ class CorrelationPlotter:
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
 
             # Check if the x-axis goes negative (ie log(CLs) vs CLs)
-            if graph.GetXaxis().GetXmin() >= 0:
+            isLinearCLs = graph.GetXaxis().GetXmin() >= 0
+            if isLinearCLs:
                 # Linear CL scale
 
                 # Set x-axis minimum to zero
@@ -311,6 +312,25 @@ class CorrelationPlotter:
             # Draw again (this is the pretty one!)
             graph.Draw('ap')
 
+            # Draw a guide line at CLs = 0.05
+            exclusionLine = ROOT.TLine()
+            exclusionLine.SetLineColor(ROOT.kGray)
+            exclusionLine.SetLineWidth(4)
+            exclusionLine.SetLineStyle(7) #ROOT.kDashed)
+            import math
+            xvalue = 0.05 if isLinearCLs else math.log10(0.05)
+            ymax = graph.GetYaxis().GetXmax()
+            exclusionLine.DrawLine(xvalue,0, xvalue,ymax)
+
+            # Add some text to explain what the grey line is?
+            # I can't seem to get this to look right...
+            # exclusionText = ROOT.TLatex()
+            # exclusionText.SetTextColor(ROOT.kGray)
+            # exclusionText.SetTextAngle(90)
+            # exclusionText.SetTextAlign(21) # Centre bottom adjusted
+            # exclusionText.SetTextSize(0.04)
+            # exclusionText.DrawLatex(xvalue, ymax*2./3, 'CLs = 0.05')
+
             # Draw the fit function error band next, if it exists
             if graph.fiterrorgraph:
                 graph.fiterrorgraph.SetMarkerSize(0)
@@ -323,16 +343,24 @@ class CorrelationPlotter:
                 f.Draw('same')
 
                 # Put the fit parameters on the plot, for convenience
-                printy = 0.9 # Start position for listing the fit parameters
-                for ipar in range(f.GetNpar()):
-                    printy -= 0.05
-                    ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
+                # Have one parameter as a special case
+                if f.GetNpar() == 1:
+                    ROOT.myText(0.58,0.85, ROOT.kBlack, '#LT#epsilon #GT = %5.2f #pm%5.2f'%(f.GetParameter(0),f.GetParError(0)))
+                else:
+                    printy = 0.9 # Start position for listing the fit parameters
+                    for ipar in range(f.GetNpar()):
+                        printy -= 0.05
+                        ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
 
             # Add the graph title, so you can see which SR this is
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
 
             # And an ATLAS label!
             ROOT.ATLASLabel(0.6,0.9,"Internal")
+
+            # Finally, say if the fit on the plot is good or not
+            if not graph.goodfit:
+                ROOT.myText(0.2, 0.2, ROOT.kRed, 'Bad fit')
 
             # Open a multi-page pdf file
             # This adds the current canvas, ie completely "natural" x and y axes
