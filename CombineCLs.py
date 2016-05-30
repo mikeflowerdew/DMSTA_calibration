@@ -385,6 +385,17 @@ class Combiner:
         for p in NSRplots:
             p.SetDirectory(0)
 
+        # A correlation plot
+        NSRs = len(self.CalibCurves)
+        SRcorr_numerator = ROOT.TH2D('SRcorrelation_numerator','',NSRs,-0.5,NSRs-0.5,NSRs,-0.5,NSRs-0.5) # Initially fill iff both SRs exclude
+        SRcorr_numerator.Sumw2()
+        SRcorr_numerator.SetDirectory(0)
+        for ibin,analysisSR in enumerate(sorted(self.CalibCurves.keys())):
+            SRcorr_numerator.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            SRcorr_numerator.GetYaxis().SetBinLabel(ibin+1, analysisSR)
+        SRcorr_denominator = SRcorr_numerator.Clone('SRcorrelation_denominator') # Fill if x-axis SR excludes
+        SRcorr_denominator.SetDirectory(0)
+
         # Output text file for the STAs
         outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
         badmodelfile = open('/'.join([outdirname,'DoNotProcess.txt']), 'w')
@@ -460,20 +471,32 @@ class Combiner:
 
             if CLresult.value < 0.05:
                 ExclusionCount['total'] += 1
-            anyExcluded = False
+            exclusionSRs = []
             for k,v in CLresults.items():
                 if v.value < 0.05:
-                    anyExcluded = True
+                    exclusionSRs.append(k)
                     try:
                         ExclusionCount[k] += 1
                     except KeyError:
                         ExclusionCount[k] = 1
-            if anyExcluded:
+            if exclusionSRs:
                 ExclusionCount['total_any'] += 1
 
+                for exclSR in exclusionSRs:
+                    # Denominator: fill the entire column:
+                    for ibiny in range(1,SRcorr_denominator.GetNbinsY()+1):
+                        SRcorr_denominator.Fill(exclSR, ibiny, 1)
+                    # Numerator: Loop over other SRs
+                    for exclSR2 in exclusionSRs:
+                        # Order does not matter, as every combo comes up eventually
+                        SRcorr_numerator.Fill(exclSR, exclSR2, 1)
+                
         outfile.close()
         badmodelfile.close()
         yieldfile.Close()
+
+        SRcorr_exclusion = SRcorr_numerator.Clone('SRcorr_exclusion')
+        SRcorr_exclusion.Divide(SRcorr_numerator, SRcorr_denominator, 1, 1, 'B')
 
         # Save the results
         outfile = ROOT.TFile.Open('/'.join([outdirname,'CLresults.root']),'RECREATE')
@@ -488,6 +511,9 @@ class Combiner:
         NSRplot.Write()
         for p in NSRplots:
             p.Write()
+        SRcorr_exclusion.Write()
+        SRcorr_numerator.Write()
+        SRcorr_denominator.Write()
         outfile.Close()
 
         from pprint import pprint
@@ -513,7 +539,7 @@ class Combiner:
         canvas = ROOT.TCanvas('can','can',800,600)
         infile = ROOT.TFile.Open('/'.join([dirname,'CLresults.root']))
 
-        def CLsPlot_withInvalid(basename, logY=False):
+        def CLsPlot_withInvalid(basename, logY=False, pdfname=None):
 
             CLsPlot = infile.Get(basename)
             CLsPlot_valid = infile.Get(basename+'_valid')
@@ -526,13 +552,67 @@ class Combiner:
             ROOT.ATLASLabel(0.3,0.85,"Internal")
             ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
             ROOT.myBoxText(0.3,0.75,0.02,CLsPlot_valid.GetFillColor(),'Non-extrapolated models')
+            # HACKHACKHACK
+            if 'Ewk' in basename:
+                # This is for an individual SR
+                ROOT.myText(0.2, 0.95, ROOT.kBlack, basename)
 
             canvas.SetLogy(logY)
-            canvas.Print('/'.join([dirname,basename+'Plot.pdf']))
+            if pdfname is None:
+                canvas.Print('/'.join([dirname,basename+'Plot.pdf']))
+            else:
+                canvas.Print('/'.join([dirname,pdfname+'Plot.pdf']))
+            canvas.SetLogy(0) # Always revert to a linear scale
+
+        def CLsPlot_withExpected(basename, logY=False, pdfname=None):
+
+            CLsPlot = infile.Get(basename)
+            CLsExpPlot = infile.Get(basename.replace('Obs','Exp'))
+        
+            CLsExpPlot.SetLineColor(ROOT.kBlue)
+            CLsExpPlot.Draw()
+            CLsPlot.Draw('same')
+        
+            ROOT.ATLASLabel(0.3,0.85,"Internal")
+            ROOT.myBoxText(0.3,0.8,0.02,CLsPlot.GetLineColor(),'Observed')
+            ROOT.myBoxText(0.3,0.75,0.02,CLsExpPlot.GetLineColor(),'Expected')
+            # HACKHACKHACK
+            if 'Ewk' in basename:
+                # This is for an individual SR
+                ROOT.myText(0.2, 0.95, ROOT.kBlack, basename)
+
+            canvas.SetLogy(logY)
+            if pdfname is None:
+                canvas.Print('/'.join([dirname,basename+'ExpPlot.pdf']))
+            else:
+                canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf']))
             canvas.SetLogy(0) # Always revert to a linear scale
 
         CLsPlot_withInvalid('CLsObs')
         CLsPlot_withInvalid('LogCLsObs', True)
+        CLsPlot_withExpected('CLsObs')
+        CLsPlot_withExpected('LogCLsObs', True)
+
+        # Try some per-SR plots
+        pdfname = 'PerSRCLs'
+        pdfnameLog = 'PerSRLogCLs'
+        canvas.Print('/'.join([dirname,pdfname+'Plot.pdf[']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'Plot.pdf[']))
+        canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf[']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf[']))
+        for key in sorted(infile.GetListOfKeys()):
+            keyname = key.GetName()
+            if keyname.endswith('_valid'): continue
+            if keyname.startswith('CLsObs'):
+                CLsPlot_withInvalid(keyname, pdfname=pdfname)
+                CLsPlot_withExpected(keyname, pdfname=pdfname)
+            elif keyname.startswith('LogCLsObs'):
+                CLsPlot_withInvalid(keyname, True, pdfname=pdfnameLog)
+                CLsPlot_withExpected(keyname, True, pdfname=pdfnameLog)
+        canvas.Print('/'.join([dirname,pdfname+'Plot.pdf]']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'Plot.pdf]']))
+        canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf]']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf]']))
 
         NSRname = '/'.join([dirname,'NSRplot.pdf'])
         NSRplot = infile.Get('NSRplot')
