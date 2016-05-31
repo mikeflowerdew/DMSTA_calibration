@@ -30,6 +30,8 @@ intree.SetBranchStatus('Cross_section_nn*', 1)
 intree.SetBranchStatus('cos_tau', 1)
 intree.SetBranchStatus('m_chi_*', 1)
 intree.SetBranchStatus('LLV_*', 1)
+intree.SetBranchStatus('M_*', 1)
+intree.SetBranchStatus('N_*', 1)
 intree.SetBranchStatus('mu', 1)
 intree.SetBranchStatus('tanb', 1)
 

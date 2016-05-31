@@ -300,6 +300,11 @@ class Combiner:
         if not os.path.exists(outdirname):
             os.makedirs(outdirname)
 
+        # An extra subdirectory for detailed per-SR information
+        perSRdirname = '/'.join([outdirname,'perSRresults'])
+        if not os.path.exists(perSRdirname):
+            os.makedirs(perSRdirname)
+
         yieldfile = ROOT.TFile.Open(self.__yieldfilename)
 
         tree = yieldfile.Get('susy')
@@ -399,6 +404,14 @@ class Combiner:
         # Output text file for the STAs
         outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
         badmodelfile = open('/'.join([outdirname,'DoNotProcess.txt']), 'w')
+        perSRfiles = {} # For each SR, the excluded models where that SR is the best
+        def addPerSRresult(key, value):
+            try:
+                perSRfiles[key].write(value+'\n')
+            except KeyError:
+                perSRfiles[key] = open('/'.join([perSRdirname,key+'.txt']), 'w')
+                perSRfiles[key].write(value+'\n')
+            pass
 
         print '%i models found in tree'%(tree.GetEntries())
         imodel = 0 # Counter
@@ -471,6 +484,7 @@ class Combiner:
 
             if CLresult.value < 0.05:
                 ExclusionCount['total'] += 1
+                addPerSRresult(bestSR, str(int(modelName)))
             exclusionSRs = []
             for k,v in CLresults.items():
                 if v.value < 0.05:
