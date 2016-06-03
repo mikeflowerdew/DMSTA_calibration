@@ -568,6 +568,12 @@ class CorrelationPlotter:
         except AttributeError:
             xmax = fitfunc.GetXmax()
 
+        # Now see if we need to adjust the normalisation for systematics
+        try:
+            scalefact = fitfunc.scalefact
+        except AttributeError:
+            scalefact = 1.0
+
         fitresult = graph.Fit(fitfunc, "SRB", '', xmin, xmax)
         finalfunc = graph.GetFunction(fitfunc.GetName())
         if finalfunc:
@@ -575,10 +581,12 @@ class CorrelationPlotter:
             # The only way I can find to properly store the region
             # -0.5 < log(CLs) < 0.0 is to clone the original function.
             # It really seems as if this part of the function is lost during the fit...?
-            newfunc = fitfunc.Clone()
+            # Even worse, the functional form is lost in a call to Clone(),
+            # so reconstruct it from the original graph
+            newfunc = ROOT.TF1('fitfunc', lambda x,p: fitfunc.graph.Eval(x[0])/p[0], -6, 0, 1)
             for iparam in range(newfunc.GetNpar()):
-                newfunc.SetParameter(iparam, finalfunc.GetParameter(iparam))
-                newfunc.SetParError(iparam, finalfunc.GetParError(iparam))
+                newfunc.SetParameter(iparam, scalefact*finalfunc.GetParameter(iparam))
+                newfunc.SetParError(iparam, scalefact*finalfunc.GetParError(iparam))
             graph.GetListOfFunctions().Clear()
             # finalfunc.SetName(finalfunc.GetName()+'_old')
             graph.GetListOfFunctions().AddFirst(newfunc)
@@ -640,6 +648,11 @@ def PassArguments():
         action = "store_true",
         dest = "truthlevel",
         help = "Get yields from evgen rather than official MC")
+    parser.add_argument(
+        "--systematic",
+        action = "store_true",
+        dest = "systematic",
+        help = "Do a systematic variation, for robustness checks")
 
     return parser.parse_args()
 
@@ -697,11 +710,13 @@ if __name__ == '__main__':
         from Reader_DMSTA import DMSTAReader
 
         reader = DMSTAReader()
-        data = reader.ReadFiles(not cmdlinearguments.truthlevel)
+        data = reader.ReadFiles(not cmdlinearguments.truthlevel, cmdlinearguments.systematic)
         if cmdlinearguments.truthlevel:
             plotdir = 'plots_privateMC'
         else:
             plotdir = 'plots_officialMC'
+        if cmdlinearguments.systematic:
+            plotdir += '_systematic'
 
     if 'data' in dir():
         plotter = CorrelationPlotter(data)

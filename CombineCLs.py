@@ -801,6 +801,11 @@ if __name__ == '__main__':
         action = "store_true",
         dest = "truthlevel",
         help = "Get yields from evgen rather than official MC")
+    parser.add_argument(
+        "--systematic",
+        action = "store_true",
+        dest = "systematic",
+        help = "Try a systematic variation of the CLs calibration")
     cmdlinearguments = parser.parse_args()
 
     import ROOT
@@ -822,11 +827,15 @@ if __name__ == '__main__':
         subdirname += '_bestExpected'
     else:
         subdirname += '_bestObserved'
+    if cmdlinearguments.systematic:
+        subdirname += '_systematic'
     outdirname = '/'.join(['results',subdirname])
     if cmdlinearguments.nmodels:
         outdirname += '_test'
 
     CLsdir = 'plots_privateMC' if cmdlinearguments.truthlevel else 'plots_officialMC'
+    if cmdlinearguments.systematic:
+        CLsdir += '_systematic'
     obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
                    '/'.join([CLsdir,'calibration.root']))
     if cmdlinearguments.all:

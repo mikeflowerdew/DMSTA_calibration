@@ -61,11 +61,14 @@ class DMSTAReader:
         self.__hffile = HFfile
         self.__DSIDdict = {} # Formed from the DSlist in a bit
         
-    def ReadFiles(self, officialMC=True):
+    def ReadFiles(self, officialMC=True, systematic=False):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
         The flag sets whether the truth yields are taken from the official MC (default)
         or the original private evgen.
+        The third argument can be used to try systematic variations of the fits.
         """
+
+        self.systematic = systematic
 
         # This is what we want to return
         result = []
@@ -285,7 +288,7 @@ class DMSTAReader:
                 datum['LogCLsObs'] = math.log10(CLsObs)
             if CLsExp and CLsExp > 0:
                 datum['LogCLsExp'] = math.log10(CLsExp)
-                
+
         f.close() # Let's be tidy
 
         return data
@@ -402,6 +405,11 @@ class DMSTAReader:
             if abs(normcoeff.error) > 0.2*abs(normcoeff.value):
                 return False
 
+            # Check the x-range. We want at least one excluded point
+            xmin = min([graph.GetX()[i] for i in range(graph.GetN())])
+            if xmin > math.log10(0.05):
+                return False
+
             print 'Success!'
             # Leave space for additional criteria if I need them
             return True
@@ -464,6 +472,19 @@ class DMSTAReader:
             SRobj.fitfunctions['LogCLsObs'] = ROOT.TF1('fitfunc', lambda x,p: graphObs.Eval(x[0])/p[0], -6, 0, 1)
             SRobj.fitfunctions['LogCLsExp'] = ROOT.TF1('fitfunc', lambda x,p: graphExp.Eval(x[0])/p[0], -6, 0, 1)
 
+            # Store the original graph, as this is the only meaningful way to copy the function
+            SRobj.fitfunctions['LogCLsObs'].graph = graphObs
+            SRobj.fitfunctions['LogCLsExp'].graph = graphExp
+
+            # Ad-hoc adjustment for systematics
+            if self.systematic and 'TwoLep' not in SRobj.name:
+                # Set a common default first
+                scalefact = 0.5
+                if 'SR0Z' in SRobj.name: scalefact = 0.7
+                elif 'ThreeLep' in SRobj.name: scalefact = 0.8
+                SRobj.fitfunctions['LogCLsObs'].scalefact = scalefact
+                SRobj.fitfunctions['LogCLsExp'].scalefact = scalefact
+
             # Extract the TF1 object - does not work.
             # SRobj.fitfunctions['LogCLsObs'] = funcfile.Get(shortSRname)
             # SRobj.fitfunctions['LogCLsObs'].SetName('fitfunc') # for later convenience
@@ -473,9 +494,13 @@ class DMSTAReader:
             # Restrict the fit range to small CLs values
             # SRobj.fitfunctions['LogCLsObs'].SetRange(-6, -0.5)
             SRobj.fitfunctions['LogCLsObs'].xmin = -6.
-            SRobj.fitfunctions['LogCLsObs'].xmax = -0.5
             SRobj.fitfunctions['LogCLsExp'].xmin = -6.
-            SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
+            if self.systematic and 'TwoLep' in SRobj.name:
+                SRobj.fitfunctions['LogCLsObs'].xmax = 0.0
+                SRobj.fitfunctions['LogCLsExp'].xmax = 0.0
+            else:
+                SRobj.fitfunctions['LogCLsObs'].xmax = -0.5
+                SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
 
             # Special case(s)
             # Now left just as an example
