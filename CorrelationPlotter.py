@@ -568,12 +568,6 @@ class CorrelationPlotter:
         except AttributeError:
             xmax = fitfunc.GetXmax()
 
-        # Now see if we need to adjust the normalisation for systematics
-        try:
-            scalefact = fitfunc.scalefact
-        except AttributeError:
-            scalefact = 1.0
-
         fitresult = graph.Fit(fitfunc, "SRB", '', xmin, xmax)
         finalfunc = graph.GetFunction(fitfunc.GetName())
         if finalfunc:
@@ -584,6 +578,13 @@ class CorrelationPlotter:
             # Even worse, the functional form is lost in a call to Clone(),
             # so reconstruct it from the original graph
             newfunc = ROOT.TF1('fitfunc', lambda x,p: fitfunc.graph.Eval(x[0])/p[0], -6, 0, 1)
+
+            # See if we need to adjust the normalisation
+            try:
+                scalefact = fitfunc.SystematicFactor(graph, fitfunc)
+            except AttributeError:
+                scalefact = 1.0
+
             for iparam in range(newfunc.GetNpar()):
                 newfunc.SetParameter(iparam, scalefact*finalfunc.GetParameter(iparam))
                 newfunc.SetParError(iparam, scalefact*finalfunc.GetParError(iparam))

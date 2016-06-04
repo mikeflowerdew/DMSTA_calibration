@@ -452,6 +452,69 @@ class DMSTAReader:
 
             return result
 
+        def SystematicFactor(graph, fitfunc):
+            """Analyses the fitted function, and determines an appropriate
+            scale factor for the normalisation, corresponding to something
+            like a 1-sigma variation. The definition is a bit arbitrary,
+            but hopefully better than the naive statistical error from the fit.
+            In case of a problem, likely a bad fit anyway, returns 1.
+            """
+
+            # The graph name includes the SR name, in case we need it
+            graphname = graph.GetName()
+
+            # The central idea: simultaneously compute a "chi^2" of the
+            # fractional deviation between the graph and function, as well
+            # as the average fractional error on the truth yield
+            sumdiff2 = 0.
+            sumerr = 0.
+            Npoints = 0
+
+            for ipoint in range(graph.GetN()):
+
+                ypoint = graph.GetY()[ipoint]
+                xpoint = graph.GetX()[ipoint]
+                yfunc = fitfunc.Eval(xpoint)
+                if not ypoint or not yfunc:
+                    continue
+                if xpoint < fitfunc.xmin or xpoint > fitfunc.xmax:
+                    continue
+
+                # All tests passed OK, add this point into the calculation
+                Npoints += 1
+                sumdiff2 += (ypoint - yfunc)*(ypoint - yfunc)/(yfunc*yfunc)
+                sumerr += graph.GetEY()[ipoint]/ypoint
+
+            if not Npoints:
+                return 1.
+
+            # Now treat sumerr/Npoints and sqrt(sumdiff2)/Npoints as uncorrelated errors
+            toterr2 = sumerr*sumerr + sumdiff2
+            error = math.sqrt(toterr2)/Npoints
+
+            # We want the end result of scaling the graph by (1+error)
+            # With the definition of the normalisation parameter, we must return the inverse of this.
+            return 1./(1.+error)
+
+#             # Ad-hoc adjustment for systematics
+#             if self.systematic and 'TwoLep' not in graphname:
+#                 # Set a common default first
+#                 scalefact = 0.5
+#                 if 'SR0Z' in graphname: scalefact = 0.7
+#                 elif 'ThreeLep' in graphname:
+#                     scalefact = 0.8
+#                     if 'SR0a_2' in graphname: scalefact = 0.7 # Catches bin 20 too, but this cannot be fitted anyway
+#                     elif 'SR0a_4' in graphname: scalefact = 0.7
+#                     elif 'SR0a_8' in graphname: scalefact = 0.5
+#                     elif 'SR0a_9' in graphname: scalefact = 0.7
+#                     elif 'SR0a_10' in graphname: scalefact = 0.7
+#                     elif 'SR0a_12' in graphname: scalefact = 0.6
+#                     elif 'SR0a_16' in graphname: scalefact = 0.7
+#                     elif 'SR0a_18' in graphname: scalefact = 0.5
+#                     elif 'SR0b' in graphname: scalefact = 0.5
+#
+#             return scalefact
+
         # Check first if we have anything to configure
         if not self.__hffile:
             return
@@ -476,15 +539,6 @@ class DMSTAReader:
             SRobj.fitfunctions['LogCLsObs'].graph = graphObs
             SRobj.fitfunctions['LogCLsExp'].graph = graphExp
 
-            # Ad-hoc adjustment for systematics
-            if self.systematic and 'TwoLep' not in SRobj.name:
-                # Set a common default first
-                scalefact = 0.5
-                if 'SR0Z' in SRobj.name: scalefact = 0.7
-                elif 'ThreeLep' in SRobj.name: scalefact = 0.8
-                SRobj.fitfunctions['LogCLsObs'].scalefact = scalefact
-                SRobj.fitfunctions['LogCLsExp'].scalefact = scalefact
-
             # Extract the TF1 object - does not work.
             # SRobj.fitfunctions['LogCLsObs'] = funcfile.Get(shortSRname)
             # SRobj.fitfunctions['LogCLsObs'].SetName('fitfunc') # for later convenience
@@ -495,12 +549,16 @@ class DMSTAReader:
             # SRobj.fitfunctions['LogCLsObs'].SetRange(-6, -0.5)
             SRobj.fitfunctions['LogCLsObs'].xmin = -6.
             SRobj.fitfunctions['LogCLsExp'].xmin = -6.
-            if self.systematic and 'TwoLep' in SRobj.name:
-                SRobj.fitfunctions['LogCLsObs'].xmax = 0.0
-                SRobj.fitfunctions['LogCLsExp'].xmax = 0.0
-            else:
-                SRobj.fitfunctions['LogCLsObs'].xmax = -0.5
-                SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
+            SRobj.fitfunctions['LogCLsObs'].xmax = -0.5
+            SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
+
+            if self.systematic:
+                if 'TwoLep' in SRobj.name:
+                    SRobj.fitfunctions['LogCLsObs'].xmax = 0.0
+                    SRobj.fitfunctions['LogCLsExp'].xmax = 0.0
+                else:
+                    SRobj.fitfunctions['LogCLsObs'].SystematicFactor = SystematicFactor
+                    SRobj.fitfunctions['LogCLsExp'].SystematicFactor = SystematicFactor
 
             # Special case(s)
             # Now left just as an example
