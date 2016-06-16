@@ -32,10 +32,7 @@ CLs_RS = RunOneSearch_RooStats(config, Nsig)
 # Run a second fit with HistFitter
 # I need to change the SR name so the first test directory doesn't get overwritten
 config.SR = 'SR1a'
-LLH_HF,CLs_HF = RunOneSearch_HistFitter(config, Nsig)
-
-LLH_HFlist = [LLH_HF]
-CLs_HFlist = [CLs_HF]
+LLH_HF = RunOneSearch_HistFitter(config, Nsig)
 
 print 'The CLs result from RooStats is',CLs_RS
 print 'The negative LLH result from HistFitter is',LLH_HF
@@ -44,15 +41,7 @@ print 'The negative LLH result from HistFitter is',LLH_HF
 import shutil
 shutil.copy('%s/results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root'%(config.SR), 'HFresult_%s.root'%(Nsig))
 
-# for Nsig in [1.0, 10.0]:
-#     
-#     LLH_HF,CLs_HF = RunOneSearch_HistFitter(config, Nsig)
-#     shutil.copy('%s/results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root'%(config.SR), 'HFresult_%s.root'%(Nsig))
-# 
-#     LLH_HFlist.append(LLH_HF)
-#     CLs_HFlist.append(CLs_HF)
-
-print '==========================='
-print 'LLHlist:',LLH_HFlist
-print 'The CLs result from RooStats is',CLs_RS
-print 'The CLs results from HistFitter are',CLs_HFlist
+for Nsig in [1.0, 10.0]:
+    
+    LLH_HF = RunOneSearch_HistFitter(config, Nsig)
+    shutil.copy('%s/results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root'%(config.SR), 'HFresult_%s.root'%(Nsig))
