@@ -61,7 +61,7 @@ class DMSTAReader:
         self.__hffile = HFfile
         self.__DSIDdict = {} # Formed from the DSlist in a bit
         
-    def ReadFiles(self, officialMC=True, systematic=False):
+    def ReadFiles(self, officialMC=True, systematic=None):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
         The flag sets whether the truth yields are taken from the official MC (default)
         or the original private evgen.
@@ -452,7 +452,13 @@ class DMSTAReader:
 
             return result
 
-        def SystematicFactor(graph, fitfunc):
+        def SystematicFactor_linear(graph, fitfunc):
+            return SystematicFactor(graph, fitfunc, False)
+
+        def SystematicFactor_quadratic(graph, fitfunc):
+            return SystematicFactor(graph, fitfunc, True)
+
+        def SystematicFactor(graph, fitfunc, quadrature=False):
             """Analyses the fitted function, and determines an appropriate
             scale factor for the normalisation, corresponding to something
             like a 1-sigma variation. The definition is a bit arbitrary,
@@ -488,9 +494,13 @@ class DMSTAReader:
             if not Npoints:
                 return 1.
 
-            # Now treat sumerr/Npoints and sqrt(sumdiff2)/Npoints as uncorrelated errors
-            toterr2 = sumerr*sumerr + sumdiff2
-            error = math.sqrt(toterr2)/Npoints
+            if quadrature:
+                # Now treat sumerr/Npoints and sqrt(sumdiff2)/Npoints as uncorrelated errors
+                toterr2 = sumerr*sumerr + sumdiff2
+                error = math.sqrt(toterr2)/Npoints
+            else:
+                # In this case, add sumerr/Npoints and sqrt(sumdiff2)/Npoints linearly
+                error = (sumerr + math.sqrt(sumdiff2))/Npoints
 
             # We want the end result of scaling the graph by (1+error)
             # With the definition of the normalisation parameter, we must return the inverse of this.
@@ -553,12 +563,23 @@ class DMSTAReader:
             SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
 
             if self.systematic:
-                if 'TwoLep' in SRobj.name:
+                # This gets a bit complicated.
+                # Options are:
+                # "Lin", "Quad": Apply SystematicFactor to all SRs, the only difference is how the components are summed.
+                # "2L": Only the xmax of the TwoLep regions is changed
+                # "LinAll", "QuadAll": The union of the above changes
+                tryTwoLep = self.systematic in ['2L','LinAll','QuadAll']
+                trySystFactor = 'Lin' in self.systematic or 'Quad' in self.systematic
+                if tryTwoLep and 'TwoLep' in SRobj.name:
                     SRobj.fitfunctions['LogCLsObs'].xmax = 0.0
                     SRobj.fitfunctions['LogCLsExp'].xmax = 0.0
-                else:
-                    SRobj.fitfunctions['LogCLsObs'].SystematicFactor = SystematicFactor
-                    SRobj.fitfunctions['LogCLsExp'].SystematicFactor = SystematicFactor
+                elif trySystFactor:
+                    if 'Lin' in self.systematic:
+                        SRobj.fitfunctions['LogCLsObs'].SystematicFactor = SystematicFactor_linear
+                        SRobj.fitfunctions['LogCLsExp'].SystematicFactor = SystematicFactor_linear
+                    elif 'Quad' in self.systematic:
+                        SRobj.fitfunctions['LogCLsObs'].SystematicFactor = SystematicFactor_quadratic
+                        SRobj.fitfunctions['LogCLsExp'].SystematicFactor = SystematicFactor_quadratic
 
             # Special case(s)
             # Now left just as an example

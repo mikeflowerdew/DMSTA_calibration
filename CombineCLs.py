@@ -803,8 +803,8 @@ if __name__ == '__main__':
         help = "Get yields from evgen rather than official MC")
     parser.add_argument(
         "--systematic",
-        action = "store_true",
         dest = "systematic",
+        choices = [None, "Lin", "Quad", "2L", "LinAll", "QuadAll"],
         help = "Try a systematic variation of the CLs calibration")
     cmdlinearguments = parser.parse_args()
 
@@ -828,14 +828,14 @@ if __name__ == '__main__':
     else:
         subdirname += '_bestObserved'
     if cmdlinearguments.systematic:
-        subdirname += '_systematic'
+        subdirname += '_sys'+cmdlinearguments.systematic
     outdirname = '/'.join(['results',subdirname])
     if cmdlinearguments.nmodels:
         outdirname += '_test'
 
     CLsdir = 'plots_privateMC' if cmdlinearguments.truthlevel else 'plots_officialMC'
     if cmdlinearguments.systematic:
-        CLsdir += '_systematic'
+        CLsdir += '_sys'+cmdlinearguments.systematic
     obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
                    '/'.join([CLsdir,'calibration.root']))
     if cmdlinearguments.all:

@@ -651,8 +651,8 @@ def PassArguments():
         help = "Get yields from evgen rather than official MC")
     parser.add_argument(
         "--systematic",
-        action = "store_true",
         dest = "systematic",
+        choices = [None, "Lin", "Quad", "2L", "LinAll", "QuadAll"],
         help = "Do a systematic variation, for robustness checks")
 
     return parser.parse_args()
@@ -717,7 +717,7 @@ if __name__ == '__main__':
         else:
             plotdir = 'plots_officialMC'
         if cmdlinearguments.systematic:
-            plotdir += '_systematic'
+            plotdir += '_sys'+cmdlinearguments.systematic
 
     if 'data' in dir():
         plotter = CorrelationPlotter(data)
