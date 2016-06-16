@@ -333,6 +333,9 @@ class Combiner:
         ExclusionCount = {'total': 0, # Total number of models excluded by the STA procedure
                           'total_any': 0, # Total number of models excluded by any SR (cross-check to compare to best expected SR)
                           }
+        # Now the count for where each SR is the best *and* CLs < 0.05
+        BestExclusionCount = {'total': 0, # Total number of models excluded by the STA procedure
+                            }
 
         # Plots of the CLs values for all models
         CLsTemplate = ROOT.TH1I('CLsTemplate',';CL_{s};Number of models',100,0,1)
@@ -502,6 +505,11 @@ class Combiner:
             # Test if model is excluded, record this for posterity if it is
             if CLresult.value < 0.05:
                 ExclusionCount['total'] += 1
+                BestExclusionCount['total'] += 1
+                try:
+                    BestExclusionCount[bestSRkey] += 1
+                except KeyError:
+                    BestExclusionCount[bestSRkey] = 1
                 addPerSRresult(bestSR, str(int(modelName)))
             # Also record all CLs values, regardless of other considerations
             for k,v in CLresults.items():
@@ -557,6 +565,8 @@ class Combiner:
         pprint(SRcount)
         print '================== Printing the ExclusionCount results'
         pprint(ExclusionCount)
+        print '================== Printing the BestExclusionCount results'
+        pprint(BestExclusionCount)
 
         # Pickle the SR count results, to make a nice table later
         SRcountFile = open('/'.join([outdirname,'SRcount.pickle']), 'w')
@@ -567,6 +577,11 @@ class Combiner:
         ExclusionCountFile = open('/'.join([outdirname,'ExclusionCount.pickle']), 'w')
         pickle.dump(ExclusionCount,ExclusionCountFile)
         ExclusionCountFile.close()
+
+        # And again for the best SR exclusion counts
+        BestExclusionCountFile = open('/'.join([outdirname,'BestExclusionCount.pickle']), 'w')
+        pickle.dump(BestExclusionCount,BestExclusionCountFile)
+        BestExclusionCountFile.close()
 
     def PlotSummary(self, dirname):
         """Makes some pdf plots.
@@ -686,19 +701,30 @@ class Combiner:
         ExclusionCount = pickle.load(ExclusionCountFile)
         ExclusionCountFile.close()
 
+        # And the same for the best SR exclusion counts
+        BestExclusionCountFile = open('/'.join([dirname,'BestExclusionCount.pickle']))
+        BestExclusionCount = pickle.load(BestExclusionCountFile)
+        BestExclusionCountFile.close()
+
         # A combined table of all results
         latexfile = open('/'.join([dirname,'SRcountTable.tex']), 'w')
-        latexfile.write('\\begin{tabular}{lrr}\n')
+        latexfile.write('\\begin{tabular}{lrrr}\n')
         latexfile.write('\\toprule\n')
-        latexfile.write('Signal region & Number of models & Excluded models\\\\ \n')
+        latexfile.write('Signal region & Number of models & Excluded models & Excluded and best SR \\\\ \n')
         latexfile.write('\\midrule\n')
 
         def writeLine(latexname,SR):
             """Little helper function for writing one line of the table."""
+            latexfile.write('%s & \\num{%i}'%(latexname,SRcount[SR]))
             if ExclusionCount.has_key(SR):
-                latexfile.write('%s & \\num{%i} & \\num{%i} \\\\ \n'%(latexname,SRcount[SR],ExclusionCount[SR]))
+                latexfile.write(' & \\num{%i}'%ExclusionCount[SR])
             else:
-                latexfile.write('%s & \\num{%i} & 0 \\\\ \n'%(latexname,SRcount[SR]))
+                latexfile.write(' & 0')
+            if BestExclusionCount.has_key(SR):
+                latexfile.write(' & \\num{%i} '%BestExclusionCount[SR])
+            else:
+                latexfile.write(' & 0 ')
+            latexfile.write('\\\\ \n')
 
         # Now add in the SR results
         # Start with the 2L SRWW results
