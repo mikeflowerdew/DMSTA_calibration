@@ -658,7 +658,7 @@ def PassArguments():
         "--subset",
         action = "store_true",
         dest = "subset",
-        help = "Perform the calibration using D3PDs_subset.txt")
+        help = "Perform the calibration using D3PDs_calibsubset.txt")
 
     return parser.parse_args()
 
@@ -716,7 +716,7 @@ if __name__ == '__main__':
         from Reader_DMSTA import DMSTAReader
 
         if cmdlinearguments.subset:
-            reader = DMSTAReader(DSlist='Data_Yields/D3PDs_subset.txt')
+            reader = DMSTAReader(DSlist='Data_Yields/D3PDs_calibsubset.txt')
         else:
             reader = DMSTAReader()
         data = reader.ReadFiles(not cmdlinearguments.truthlevel, cmdlinearguments.systematic)

@@ -60,6 +60,7 @@ eventlists = {
     'TestSample': ROOT.TEventList('elist_TestSample'),
     }
 TestCalibModels = [] # Used later to create a text file of dataset names
+TestSampleModels = []
 
 for ientry,entry in enumerate(intree):
 
@@ -71,11 +72,13 @@ for ientry,entry in enumerate(intree):
         TestCalibModels.append(modelName)
     else:
         eventlists['TestSample'].Enter(ientry)
+        TestSampleModels.append(modelName)
 
 print 'Selected %i models for calibration'%(len(TestCalibModels))
 
 # Now I need to convert eventlists['TestCalib'] into a text file
-calibtxtfile = open('Data_Yields/D3PDs_subset.txt', 'w')
+calibtxtfile = open('Data_Yields/D3PDs_calibsubset.txt', 'w')
+sampletxtfile = open('Data_Yields/D3PDs_testsubset.txt', 'w')
 inputtxtfile = open('Data_Yields/D3PDs.txt')
 for line in inputtxtfile:
 
@@ -93,7 +96,10 @@ for line in inputtxtfile:
     
     if modelID in TestCalibModels:
         calibtxtfile.write(line)
+    elif modelID in TestSampleModels:
+        sampletxtfile.write(line)
 calibtxtfile.close()
+sampletxtfile.close()
 inputtxtfile.close()
 
 outfile = ROOT.TFile.Open('Data_Yields/EventLists_sim.root', 'RECREATE')

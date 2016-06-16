@@ -59,7 +59,7 @@ class DMSTAReader:
         self.__filesuffix = filesuffix
         self.__dslist = DSlist
         self.__hffile = HFfile
-        self.__DSIDdict = {} # Formed from the DSlist in a bit
+        self.DSIDdict = {} # Formed from the DSlist in a bit
         
     def ReadFiles(self, officialMC=True, systematic=None):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
@@ -94,7 +94,7 @@ class DMSTAReader:
 
     def __ReadDSIDs(self):
         """Map the model number to the ATLAS dataset ID.
-        The information from self.__dslist is stored in self.__DSIDdict
+        The information from self.__dslist is stored in self.DSIDdict
         """
         
         if not self.__dslist:
@@ -122,7 +122,7 @@ class DMSTAReader:
                 print splitline
                 raise # Because I want to see what this is and fix it
 
-            self.__DSIDdict[modelID] = DSID
+            self.DSIDdict[modelID] = DSID
 
         f.close()
 
@@ -166,7 +166,7 @@ class DMSTAReader:
             modelID = int(entry.modelName)
 
             try:
-                DSID = self.__DSIDdict[modelID]
+                DSID = self.DSIDdict[modelID]
             except KeyError:
                 continue # Not interested (yet)
 
@@ -228,7 +228,7 @@ class DMSTAReader:
             for fname in infiles:
                 modelname = int(fname.split('/')[-1].split('.')[0])
                 try:
-                    DSID = self.__DSIDdict[modelname]
+                    DSID = self.DSIDdict[modelname]
                 except KeyError:
                     # Should not happen in normal running
                     print 'WARNING in Reader_DMSTA: no DSID for model',modelname

@@ -414,6 +414,15 @@ class Combiner:
                 perSRfiles[key] = open('/'.join([perSRdirname,key+'.txt']), 'w')
                 perSRfiles[key].write(value+'\n')
             pass
+        perSRCLsfiles = {} # A full record of model ID vs CLs value
+        def addPerSRCLsresult(key, model, CLsObs, CLsExp):
+            line = ','.join([str(model),str(CLsObs),str(CLsExp)]) + '\n'
+            try:
+                perSRCLsfiles[key].write(line)
+            except KeyError:
+                perSRCLsfiles[key] = open('/'.join([perSRdirname,key+'.dat']), 'w')
+                perSRCLsfiles[key].write(line)
+            pass
 
         if eventlist:
             print '%i models found in event list'%(eventlist.GetN())
@@ -490,9 +499,14 @@ class Combiner:
             except KeyError:
                 SRcount[bestSRkey] = 1
 
+            # Test if model is excluded, record this for posterity if it is
             if CLresult.value < 0.05:
                 ExclusionCount['total'] += 1
                 addPerSRresult(bestSR, str(int(modelName)))
+            # Also record all CLs values, regardless of other considerations
+            for k,v in CLresults.items():
+                addPerSRCLsresult(k, int(modelName), v.value, CLresultsExp[k].value)
+
             exclusionSRs = []
             for k,v in CLresults.items():
                 if v.value < 0.05:
@@ -818,7 +832,7 @@ if __name__ == '__main__':
         "--subset",
         action = "store_true",
         dest = "subset",
-        help = "Perform the calibration using D3PDs_subset.txt")
+        help = "Perform the analysis using D3PDs_testsubset.txt")
     cmdlinearguments = parser.parse_args()
 
     import ROOT
