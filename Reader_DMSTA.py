@@ -588,9 +588,9 @@ class DMSTAReader:
 
             # Special case(s)
             # Now left just as an example
-            # if 'SR0Z' in SRobj.name:
-            #     SRobj.fitfunctions['LogCLsObs'].xmax = -0.6
-            #     SRobj.fitfunctions['LogCLsExp'].xmax = -0.6
+            if 'SR0a_16' in SRobj.name:
+                SRobj.fitfunctions['LogCLsObs'].xmax = -0.9
+                SRobj.fitfunctions['LogCLsExp'].xmax = -0.7
 
             SRobj.GoodFit = GoodFit
             SRobj.FitErrorGraph = FitErrorGraph

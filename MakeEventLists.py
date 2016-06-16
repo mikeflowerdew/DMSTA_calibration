@@ -8,7 +8,7 @@ B) A random separation of the 500 models into two groups. One is for making new 
 """
 
 import ROOT
-print ROOT.gRandom
+ROOT.gRandom.SetSeed(1)
 
 from glob import glob
 SRfilenames = glob('results/smallest_officialMC_bestExpected/perSRresults/*.txt')
