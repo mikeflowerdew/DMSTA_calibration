@@ -292,7 +292,7 @@ class Combiner:
         
         return result,resultkey,results,resultsExp
 
-    def ReadNtuple(self, outdirname, Nmodels=None):
+    def ReadNtuple(self, outdirname, Nmodels=None, eventlist=None):
         """Read all truth yields, record the estimated CLs values.
         Use Nmodels to reduce the number of analysed models, for testing."""
 
@@ -308,6 +308,8 @@ class Combiner:
         yieldfile = ROOT.TFile.Open(self.__yieldfilename)
 
         tree = yieldfile.Get('susy')
+        if eventlist:
+            tree.SetEventList(eventlist)
         tree.SetBranchStatus('*', 0)
         tree.SetBranchStatus('modelName', 1)
         tree.SetBranchStatus('*ExpectedEvents*', 1)
@@ -413,11 +415,17 @@ class Combiner:
                 perSRfiles[key].write(value+'\n')
             pass
 
-        print '%i models found in tree'%(tree.GetEntries())
+        if eventlist:
+            print '%i models found in event list'%(eventlist.GetN())
+        else:
+            print '%i models found in tree'%(tree.GetEntries())
         imodel = 0 # Counter
 
-        for entry in tree:
+        for ientry,entry in enumerate(tree):
 
+            if eventlist and not eventlist.Contains(ientry):
+                continue
+            
             modelName = entry.modelName
             if modelName % 1000 == 0:
                 print 'On model %6i'%(modelName)
@@ -806,6 +814,11 @@ if __name__ == '__main__':
         dest = "systematic",
         choices = [None, "Lin", "Quad", "2L", "LinAll", "QuadAll"],
         help = "Try a systematic variation of the CLs calibration")
+    parser.add_argument(
+        "--subset",
+        action = "store_true",
+        dest = "subset",
+        help = "Perform the calibration using D3PDs_subset.txt")
     cmdlinearguments = parser.parse_args()
 
     import ROOT
@@ -829,6 +842,8 @@ if __name__ == '__main__':
         subdirname += '_bestObserved'
     if cmdlinearguments.systematic:
         subdirname += '_sys'+cmdlinearguments.systematic
+    if cmdlinearguments.subset:
+        subdirname += '_subset'
     outdirname = '/'.join(['results',subdirname])
     if cmdlinearguments.nmodels:
         outdirname += '_test'
@@ -836,13 +851,27 @@ if __name__ == '__main__':
     CLsdir = 'plots_privateMC' if cmdlinearguments.truthlevel else 'plots_officialMC'
     if cmdlinearguments.systematic:
         CLsdir += '_sys'+cmdlinearguments.systematic
-    obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
-                   '/'.join([CLsdir,'calibration.root']))
+    if cmdlinearguments.subset:
+        CLsdir += '_subset'
+
+    if cmdlinearguments.subset:
+        # Special kind of run: just a subset of the "sim" samples
+        # We need an event list in this case
+        ELfile = ROOT.TFile.Open('Data_Yields/EventLists_sim.root')
+        EL = ELfile.Get('elist_TestSample')
+        EL.SetDirectory(0)
+        ELfile.Close()
+        infile = 'Data_Yields/SummaryNtuple_STA_sim.root'
+    else:
+        EL = None
+        infile = 'Data_Yields/SummaryNtuple_STA_evgen.root'
+
+    obj = Combiner(infile, '/'.join([CLsdir,'calibration.root']))
     if cmdlinearguments.all:
         obj.strategy = cmdlinearguments.strategy
         obj.truncate = cmdlinearguments.truncate
         obj.useexpected = cmdlinearguments.useexpected
-        obj.ReadNtuple(outdirname, cmdlinearguments.nmodels)
+        obj.ReadNtuple(outdirname, cmdlinearguments.nmodels, EL)
     obj.PlotSummary(outdirname)
     obj.LatexSummary(outdirname)
 

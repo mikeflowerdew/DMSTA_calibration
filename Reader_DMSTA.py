@@ -227,7 +227,12 @@ class DMSTAReader:
             print 'INFO: Reader_DMSTA found %i matches to %s'%(len(infiles),searchstring)
             for fname in infiles:
                 modelname = int(fname.split('/')[-1].split('.')[0])
-                DSID = self.__DSIDdict[modelname]
+                try:
+                    DSID = self.__DSIDdict[modelname]
+                except KeyError:
+                    # Should not happen in normal running
+                    print 'WARNING in Reader_DMSTA: no DSID for model',modelname
+                    continue
                 data = self.__ReadYamlFiles(data, analysis, fname, DSID)
 
         return data

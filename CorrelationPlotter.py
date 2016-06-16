@@ -654,6 +654,11 @@ def PassArguments():
         dest = "systematic",
         choices = [None, "Lin", "Quad", "2L", "LinAll", "QuadAll"],
         help = "Do a systematic variation, for robustness checks")
+    parser.add_argument(
+        "--subset",
+        action = "store_true",
+        dest = "subset",
+        help = "Perform the calibration using D3PDs_subset.txt")
 
     return parser.parse_args()
 
@@ -710,7 +715,10 @@ if __name__ == '__main__':
         # Default operation: do the real anaylsis
         from Reader_DMSTA import DMSTAReader
 
-        reader = DMSTAReader()
+        if cmdlinearguments.subset:
+            reader = DMSTAReader(DSlist='Data_Yields/D3PDs_subset.txt')
+        else:
+            reader = DMSTAReader()
         data = reader.ReadFiles(not cmdlinearguments.truthlevel, cmdlinearguments.systematic)
         if cmdlinearguments.truthlevel:
             plotdir = 'plots_privateMC'
@@ -718,6 +726,8 @@ if __name__ == '__main__':
             plotdir = 'plots_officialMC'
         if cmdlinearguments.systematic:
             plotdir += '_sys'+cmdlinearguments.systematic
+        if cmdlinearguments.subset:
+            plotdir += '_subset'
 
     if 'data' in dir():
         plotter = CorrelationPlotter(data)
