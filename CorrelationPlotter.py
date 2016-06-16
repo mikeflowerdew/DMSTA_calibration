@@ -345,7 +345,7 @@ class CorrelationPlotter:
                 # Put the fit parameters on the plot, for convenience
                 # Have one parameter as a special case
                 if f.GetNpar() == 1:
-                    ROOT.myText(0.58,0.85, ROOT.kBlack, '#LT#epsilon #GT = %5.2f #pm%5.2f'%(f.GetParameter(0),f.GetParError(0)))
+                    ROOT.myText(0.2,0.19, ROOT.kBlack, '#LT#epsilon #GT = %5.2f #pm%5.2f'%(f.GetParameter(0),f.GetParError(0)))
                 else:
                     printy = 0.9 # Start position for listing the fit parameters
                     for ipar in range(f.GetNpar()):
@@ -353,14 +353,44 @@ class CorrelationPlotter:
                         ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
 
             # Add the graph title, so you can see which SR this is
-            ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
+            # This needs to be reinterpreted for publication-quality plots
+            splittitle = graph.GetTitle().split()
+            analysistext = ''
+            SRtext = ''
+            if splittitle[0] == 'EwkTwoLepton':
+                analysistext = '2 lepton search'
+                if 'mT' in splittitle[-1]:
+                    threshold = 90 if 'a' in splittitle[-1] else (120 if 'b' in splittitle[-1] else 150)
+                    SRtext = 'SR-m_{T2}^{%i}'%(threshold)
+                else: # Zjets or WWx
+                    SRtext = 'SR-%s'%(splittitle[-1])
+            elif splittitle[0] == 'EwkThreeLepton':
+                analysistext = '3 lepton search'
+                if 'SR0a' in splittitle[-2]:
+                    SRtext = 'SR0#tau a bin %s'%(splittitle[-1])
+                elif splittitle[-1] == 'SR0b':
+                    SRtext = 'SR0#tau b'
+                elif splittitle[-1] == 'SR1SS':
+                    SRtext = 'SR1#tau'
+            elif splittitle[0] == 'EwkFourLepton':
+                analysistext = '4 lepton search'
+                SRtext = splittitle[-1]
+            elif splittitle[0] == 'EwkTwoTau':
+                analysistext = '2 tau search'
+                if splittitle[2].startswith('C1'):
+                    SRtext = 'SR-%s'%(splittitle[2])
+                else:
+                    SRtext = 'SR-DS-lowMass' if 'low' in splittitle[-1] else 'SR-DS-highMass'
 
+            ROOT.myTextVarSize(0.2, 0.30, ROOT.kBlack, analysistext+', '+SRtext, 0.04)
+            # ROOT.myTextVarSize(0.2, 0.25, ROOT.kBlack, SRtext, 0.03)
+            ROOT.myBoxTextColorAlpha(0.27, 0.26, 0.04, ROOT.kYellow, 'CL_{s} parametrisation', ROOT.kRed, 0.35)
             # And an ATLAS label!
-            ROOT.ATLASLabel(0.6,0.9,"Internal")
+            ROOT.ATLASLabel(0.2,0.35,"Internal")
 
             # Finally, say if the fit on the plot is good or not
             if not graph.goodfit:
-                ROOT.myText(0.2, 0.2, ROOT.kRed, 'Bad fit')
+                ROOT.myText(0.8, 0.9, ROOT.kRed, 'Bad fit')
 
             # Open a multi-page pdf file
             # This adds the current canvas, ie completely "natural" x and y axes
@@ -671,6 +701,7 @@ if __name__ == '__main__':
     ROOT.gROOT.LoadMacro("AtlasStyle.C")
     ROOT.SetAtlasStyle()
     ROOT.gROOT.LoadMacro("AtlasUtils.C") 
+    ROOT.gROOT.LoadMacro("ExtraAtlasUtils.C") 
     ROOT.gROOT.LoadMacro("AtlasLabels.C") 
 
     plotdir = 'plots'
