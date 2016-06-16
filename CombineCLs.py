@@ -75,11 +75,38 @@ class Combiner:
         # Some other configurable options
         self.strategy = 'smallest'
         self.truncate = False
+        self.useexpected = False
+
+    @classmethod
+    def __FixXrange(cls, graph):
+        """Fixes the x-axis range for a calibration graph.
+        The range is [0,1] for a linear scale, and [-6,0] for a log scale.
+        In the case of a log scale, the original minimum is stored under graph.xmin
+        """
+
+        # Retrieve the x-axis minimum, extend the range back down to zero
+        graph.xmin = graph.GetXmin()
+        # Test for linear or log x-axis scale
+        if graph.xmin >= 0:
+            # Linear
+            graph.SetRange(0,graph.GetXmax())
+        else:
+            # Logarithmic
+            graph.SetRange(-6,0)
+            graph.xmin = math.pow(10,graph.xmin) # Convert back to linear scale
+
+        # Nothing more to do
+        return
 
     def ReadCalibrations(self, calibfilename):
-        """Reads all TF1 objects and stores them."""
+        """Reads all TF1 objects and stores them in self.CalibCurves.
+        This is a dictionary, with entries either like {SRname: CL_graph}.
+        Another dictionary, self.CalibCurvesExp, stores the expected fit results,
+        if they are found in the file.
+        """
 
         self.CalibCurves = {}
+        self.CalibCurvesExp = {}
 
         calibfile = ROOT.TFile.Open(calibfilename)
 
@@ -93,22 +120,20 @@ class Combiner:
             if not thing.InheritsFrom('TF1'):
                 continue
 
-            # Retrieve the x-axis minimum, extend the range back down to zero
-            thing.xmin = thing.GetXmin()
-            # Test for linear or log x-axis scale
-            if thing.xmin >= 0:
-                # Linear
-                thing.SetRange(0,thing.GetXmax())
-            else:
-                # Logarithmic
-                thing.SetRange(-6,0)
-                thing.xmin = math.pow(10,thing.xmin) # Convert back to linear scale
+            # This is a graph we want!
+
+            # Fix its x-axis range
+            self.__FixXrange(thing)
             
             # The graph names come with the CL type
             # separated from the analysis/SR by an underscore
             analysisSR = '_'.join(keyname.split('_')[:-1])
-            
-            self.CalibCurves[analysisSR] = thing
+
+            # Work out if this is an expected or an observed result
+            if 'Exp' in keyname:
+                self.CalibCurvesExp[analysisSR] = thing
+            else:
+                self.CalibCurves[analysisSR] = thing
 
         calibfile.Close()
 
@@ -119,8 +144,35 @@ class Combiner:
         This can raise a DoNotProcessError if the truth yields are not present."""
 
         results = {}
+        resultsExp = {}
         negativeYieldList = []
 
+        def GetCLs(graph, truthyield):
+            """Small helper function to extract a valid CLs from a TGraph.
+            If the number is out of the valid range, then None is returned.
+            """
+
+            result = CLs(graph.GetX(truthyield))
+
+            # If on a linear scale, check if the CLs value is within the valid range
+            if graph.GetXmin() >= 0 and result.value >= 0.999*graph.GetXmax():
+                # Too high
+                return None
+            # Similar range check for a log scale
+            if graph.GetXmin() < 0 and math.log10(result.value) >= graph.GetXmax():
+                return None
+
+            # Compare the CLs to our self-imposed minimum
+            if result.value < graph.xmin:
+                # This message prints out A LOT
+                # print 'WARNING in CombineCLs: %s has CLs = %f below the min of %s'%(analysisSR,CLs,graph.xmin)
+
+                result.valid = False
+                result.ratio = result.value/graph.xmin
+
+            return result
+
+        # Start the event loop
         for analysisSR,graph in self.CalibCurves.items():
 
             # slow, slow, slow, but I guess OK for now
@@ -130,25 +182,30 @@ class Combiner:
                 negativeYieldList.append(analysisSR)
                 continue
 
-            number = CLs(graph.GetX(truthyield))
-
-            # If on a linear scale, check if the CLs value is within the valid range
-            if graph.GetXmin() >= 0 and number.value >= 0.999*graph.GetXmax():
-                # Too high
-                continue
-            # Similar range check for a log scale
-            if graph.GetXmin() < 0 and math.log10(number.value) >= graph.GetXmax():
+            # Get the main result
+            number = GetCLs(graph, truthyield)
+            if number is None:
                 continue
 
-            results[analysisSR] = number
-            
-            # Compare the CLs to our self-imposed minimum
-            if number.value < graph.xmin:
-                # This message prints out A LOT
-                # print 'WARNING in CombineCLs: %s has CLs = %f below the min of %s'%(analysisSR,CLs,graph.xmin)
-                
-                number.valid = False
-                number.ratio = number.value/graph.xmin
+            if self.useexpected:
+                # See if we have the corresponding expected result
+                try:
+                    graphExp = self.CalibCurvesExp[analysisSR]
+                except KeyError:
+                    # Only write the results out if we have the expected results
+                    continue
+
+                numberExp = GetCLs(graphExp, truthyield)
+                if numberExp is None:
+                    continue
+
+                # We have both expected+observed results, so this is looking OK
+                results[analysisSR] = number
+                resultsExp[analysisSR] = numberExp
+
+            else:
+                # self.useexpected == False
+                results[analysisSR] = number
 
             # print '%40s: %.3f events, CLs = %s, log(CLs) = %.2f'%(analysisSR,truthyield,number,math.log10(number.value))
             # if number.value < 1e-3:
@@ -196,22 +253,31 @@ class Combiner:
                 pass
 
         if results:
-            resultkey = min(results, key=results.get) # keep a record of the best SR no matter what
+
+            # Find the best SR
+            if self.useexpected:
+                resultkey = min(resultsExp, key=results.get)
+            else:
+                resultkey = min(results, key=results.get)
             # FIXME: Use results[resultkey] to find if CLs < 0.05
 
             # What we do next depends on the CLs combination strategy
             if self.strategy == 'smallest':
-                # Copy the smallest result, in case we truncate it later
+                # Take only the best result
+                # This is a copy constructor, as result might be truncated later
                 result = CLs(results[resultkey])
+
             elif self.strategy == 'twosmallest':
-                sortedkeys = sorted(results, key=results.get)[:2]
+                # Now we need to sort the whole list
+                if self.useexpected:
+                    sortedkeys = sorted(resultsExp, key=results.get)[:2]
+                else:
+                    sortedkeys = sorted(results, key=results.get)[:2]
+                # Find the observed CLs from the two best results
                 mylist = [results[k] for k in sortedkeys]
                 result = reduce(lambda x,y: x*y, mylist, CLs(1.))
 
-                # Crazy test inserted to double-check the code
-                if len(mylist) > 1:
-                    assert(result.value == mylist[0].value*mylist[1].value)
-
+            # However we got the result, truncate it now if necessary
             if self.truncate and result.value < 1e-6:
                 result.value = 1e-6
 
@@ -224,7 +290,7 @@ class Combiner:
             result = CLs(1.)
             result.valid = False        
         
-        return result,resultkey,results
+        return result,resultkey,results,resultsExp
 
     def ReadNtuple(self, outdirname, Nmodels=None):
         """Read all truth yields, record the estimated CLs values.
@@ -233,6 +299,11 @@ class Combiner:
         import os
         if not os.path.exists(outdirname):
             os.makedirs(outdirname)
+
+        # An extra subdirectory for detailed per-SR information
+        perSRdirname = '/'.join([outdirname,'perSRresults'])
+        if not os.path.exists(perSRdirname):
+            os.makedirs(perSRdirname)
 
         yieldfile = ROOT.TFile.Open(self.__yieldfilename)
 
@@ -250,21 +321,66 @@ class Combiner:
         # Some stuff for record-keeping
 
         # SR:count - the key SR was the best SR in count models
-        SRcount = {}
+        # And also some other useful information
+        SRcount = {'total': 0, # Total number of models with at least 1 sensitive SR
+                   'CLs1' : 0, # Total number of models with _no_ sensitive SR
+                   'rounded': 0, # Models with a sensitive SR, but CLs=1.00 is given to STAs due to rounding
+                   'STA': 0, # Number of results actually given to the STAs (should be "total"+"CLs1")
+                   }
         # Same thing, but only if CLs < 5% (best SR not required)
-        ExclusionCount = {}
+        ExclusionCount = {'total': 0, # Total number of models excluded by the STA procedure
+                          'total_any': 0, # Total number of models excluded by any SR (cross-check to compare to best expected SR)
+                          }
 
         # Plots of the CLs values for all models
-        CLsplot = ROOT.TH1I('CLsplot',';CL_{s};Number of models',100,0,1)
-        CLsplot.SetDirectory(0)
-        LogCLsplot = ROOT.TH1I('LogCLsplot',';log(CL_{s});Number of models',120,-6,0)
-        LogCLsplot.SetDirectory(0)
-        
-        # Plots of the CLs values for "valid" models (ie within the calibration function range)
-        CLsplot_valid = ROOT.TH1I('CLsplot_valid',';CL_{s};Number of models',100,0,1)
-        CLsplot_valid.SetDirectory(0)
-        LogCLsplot_valid = ROOT.TH1I('LogCLsplot_valid',';log(CL_{s});Number of models',120,-6,0)
-        LogCLsplot_valid.SetDirectory(0)
+        CLsTemplate = ROOT.TH1I('CLsTemplate',';CL_{s};Number of models',100,0,1)
+        LogCLsTemplate = ROOT.TH1I('LogCLsTemplate',';log(CL_{s});Number of models',120,-6,0)
+
+        class CLsPlots:
+            """Convenient holder of all CLs plots."""
+
+            def __init__(self, xaxisprefix='', CLstype='CLs', namesuffix=''):
+
+                if namesuffix and not namesuffix.startswith('_'):
+                    namesuffix = '_'+namesuffix
+                # Plots of the observed CLs and its logarithm
+                self.CLs    = self.__makeHistogram(      CLstype+namesuffix, xaxisprefix)
+                self.LogCLs = self.__makeHistogram('Log'+CLstype+namesuffix, xaxisprefix)
+
+                # Plots of the CLs values for "valid" models (ie within the calibration function range)
+                self.CLs_valid    = self.__makeHistogram(      CLstype+namesuffix+'_valid', xaxisprefix)
+                self.LogCLs_valid = self.__makeHistogram('Log'+CLstype+namesuffix+'_valid', xaxisprefix)
+
+            @classmethod
+            def __makeHistogram(cls, newname, xaxisprefix=''):
+                result = LogCLsTemplate.Clone(newname) if newname.startswith('Log') else CLsTemplate.Clone(newname)
+                result.SetDirectory(0)
+                if xaxisprefix:
+                    result.GetXaxis().SetTitle( ' '.join([xaxisprefix,result.GetXaxis().GetTitle()]) )
+                return result
+
+            def fill(self, CLresult):
+
+                self.CLs.Fill(CLresult.value)
+                self.LogCLs.Fill(math.log10(CLresult.value))
+                if CLresult.valid:
+                    self.CLs_valid.Fill(CLresult.value)
+                    self.LogCLs_valid.Fill(math.log10(CLresult.value))
+
+            def write(self):
+
+                self.CLs.Write()
+                self.LogCLs.Write()
+                self.CLs_valid.Write()
+                self.LogCLs_valid.Write()
+
+        # Plots of the observed CLs
+        ObsCLsPlots = CLsPlots('Observed', 'CLsObs')
+        ObsCLsSRPlots = {} # One plot per best SR
+        if self.useexpected:
+            # Plots of the expected CLs
+            ExpCLsPlots = CLsPlots('Expected', 'CLsExp')
+            ExpCLsSRPlots = {} # One plot per best SR
 
         # How many SRs were used? Absolute maximum of 42 :D
         NSRplot = ROOT.TH1I('NSRplot',';Number of active SRs;Number of models',43,-0.5,42.5)
@@ -274,9 +390,28 @@ class Combiner:
         for p in NSRplots:
             p.SetDirectory(0)
 
+        # A correlation plot
+        NSRs = len(self.CalibCurves)
+        SRcorr_numerator = ROOT.TH2D('SRcorrelation_numerator','',NSRs,-0.5,NSRs-0.5,NSRs,-0.5,NSRs-0.5) # Initially fill iff both SRs exclude
+        SRcorr_numerator.Sumw2()
+        SRcorr_numerator.SetDirectory(0)
+        for ibin,analysisSR in enumerate(sorted(self.CalibCurves.keys())):
+            SRcorr_numerator.GetXaxis().SetBinLabel(ibin+1, analysisSR)
+            SRcorr_numerator.GetYaxis().SetBinLabel(ibin+1, analysisSR)
+        SRcorr_denominator = SRcorr_numerator.Clone('SRcorrelation_denominator') # Fill if x-axis SR excludes
+        SRcorr_denominator.SetDirectory(0)
+
         # Output text file for the STAs
         outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
         badmodelfile = open('/'.join([outdirname,'DoNotProcess.txt']), 'w')
+        perSRfiles = {} # For each SR, the excluded models where that SR is the best
+        def addPerSRresult(key, value):
+            try:
+                perSRfiles[key].write(value+'\n')
+            except KeyError:
+                perSRfiles[key] = open('/'.join([perSRdirname,key+'.txt']), 'w')
+                perSRfiles[key].write(value+'\n')
+            pass
 
         print '%i models found in tree'%(tree.GetEntries())
         imodel = 0 # Counter
@@ -296,52 +431,110 @@ class Combiner:
                 print '============== Model',modelName
 
             try:
-                CLresult,bestSR,CLresults = self.__AnalyseModel(entry)
+                CLresult,bestSR,CLresults,CLresultsExp = self.__AnalyseModel(entry)
             except DoNotProcessError:
                 badmodelfile.write('%i\n'%(modelName))
                 continue
 
-            outfile.write('%i,%6e\n'%(modelName,CLresult.value))
+            # This could definitely be done in a more clever way, but let's just get it done
+            nonBestSRs = []
+            for k,v in CLresults.items():
+                if v.value < 0.05 and k != bestSR:
+                    nonBestSRs.append(k)
+            outfile.write('%i,%6e,%s,%s\n'%(modelName,CLresult.value,bestSR,','.join(nonBestSRs)))
+            SRcount['STA'] += 1
 
-            CLsplot.Fill(CLresult.value)
-            LogCLsplot.Fill(math.log10(CLresult.value))
+            ObsCLsPlots.fill(CLresult)
+            if bestSR:
+                try:
+                    ObsCLsSRPlots[bestSR].fill(CLresult)
+                except KeyError:
+                    ObsCLsSRPlots[bestSR] = CLsPlots('Observed', 'CLsObs', bestSR)
+                    ObsCLsSRPlots[bestSR].fill(CLresult)
+
             NSRplot.Fill(len(CLresults))
             if CLresult.value < 1.: # This would be zero by default
                 NSRplots[int(CLresult.value/0.05)].Fill(len(CLresults))
-            if CLresult.valid:
-                CLsplot_valid.Fill(CLresult.value)
-                LogCLsplot_valid.Fill(math.log10(CLresult.value))
+
+            if self.useexpected and bestSR:
+
+                CLsExp = CLresultsExp[bestSR]
+                ExpCLsPlots.fill(CLsExp)
+
+                if bestSR:
+                    try:
+                        ExpCLsSRPlots[bestSR].fill(CLsExp)
+                    except KeyError:
+                        ExpCLsSRPlots[bestSR] = CLsPlots('Expected', 'CLsExp', bestSR)
+                        ExpCLsSRPlots[bestSR].fill(CLsExp)
 
             bestSRkey = bestSR if bestSR else ''
+
+            if bestSRkey:
+                SRcount['total'] += 1
+                if '+' in '%6e'%(CLresult.value):
+                    SRcount['rounded'] += 1
+            else:
+                SRcount['CLs1'] += 1
+
             try:
                 SRcount[bestSRkey] += 1
             except KeyError:
                 SRcount[bestSRkey] = 1
 
+            if CLresult.value < 0.05:
+                ExclusionCount['total'] += 1
+                addPerSRresult(bestSR, str(int(modelName)))
+            exclusionSRs = []
             for k,v in CLresults.items():
-                if v.valid and v.value < 0.05:
+                if v.value < 0.05:
+                    exclusionSRs.append(k)
                     try:
                         ExclusionCount[k] += 1
                     except KeyError:
                         ExclusionCount[k] = 1
+            if exclusionSRs:
+                ExclusionCount['total_any'] += 1
 
+                for exclSR in exclusionSRs:
+                    # Denominator: fill the entire column:
+                    for ibiny in range(1,SRcorr_denominator.GetNbinsY()+1):
+                        SRcorr_denominator.Fill(exclSR, ibiny, 1)
+                    # Numerator: Loop over other SRs
+                    for exclSR2 in exclusionSRs:
+                        # Order does not matter, as every combo comes up eventually
+                        SRcorr_numerator.Fill(exclSR, exclSR2, 1)
+                
         outfile.close()
         badmodelfile.close()
         yieldfile.Close()
 
+        SRcorr_exclusion = SRcorr_numerator.Clone('SRcorr_exclusion')
+        SRcorr_exclusion.Divide(SRcorr_numerator, SRcorr_denominator, 1, 1, 'B')
+
         # Save the results
         outfile = ROOT.TFile.Open('/'.join([outdirname,'CLresults.root']),'RECREATE')
-        CLsplot.Write()
-        LogCLsplot.Write()
-        CLsplot_valid.Write()
-        LogCLsplot_valid.Write()
+        ObsCLsPlots.write()
+        if self.useexpected:
+            ExpCLsPlots.write()
+        for p in ObsCLsSRPlots.values():
+            p.write()
+        if self.useexpected:
+            for p in ExpCLsSRPlots.values():
+                p.write()
         NSRplot.Write()
         for p in NSRplots:
             p.Write()
+        SRcorr_exclusion.Write()
+        SRcorr_numerator.Write()
+        SRcorr_denominator.Write()
         outfile.Close()
 
         from pprint import pprint
+        print '================== Printing the SRcount results'
         pprint(SRcount)
+        print '================== Printing the ExclusionCount results'
+        pprint(ExclusionCount)
 
         # Pickle the SR count results, to make a nice table later
         SRcountFile = open('/'.join([outdirname,'SRcount.pickle']), 'w')
@@ -360,35 +553,80 @@ class Combiner:
         canvas = ROOT.TCanvas('can','can',800,600)
         infile = ROOT.TFile.Open('/'.join([dirname,'CLresults.root']))
 
-        CLsplot = infile.Get('CLsplot')
-        CLsplot_valid = infile.Get('CLsplot_valid')
-        
-        CLsplot_valid.SetFillColor(ROOT.kBlue)
-        CLsplot_valid.SetLineWidth(0)
-        CLsplot_valid.Draw()
-        CLsplot.Draw('same')
-        
-        ROOT.ATLASLabel(0.3,0.85,"Internal")
-        ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
-        ROOT.myBoxText(0.3,0.75,0.02,CLsplot_valid.GetFillColor(),'Non-extrapolated models')
+        def CLsPlot_withInvalid(basename, logY=False, pdfname=None):
 
-        canvas.Print('/'.join([dirname,'CLsplot.pdf']))
+            CLsPlot = infile.Get(basename)
+            CLsPlot_valid = infile.Get(basename+'_valid')
         
-        LogCLsplot = infile.Get('LogCLsplot')
-        LogCLsplot_valid = infile.Get('LogCLsplot_valid')
+            CLsPlot_valid.SetFillColor(ROOT.kBlue)
+            CLsPlot_valid.SetLineWidth(0)
+            CLsPlot_valid.Draw()
+            CLsPlot.Draw('same')
         
-        LogCLsplot_valid.SetFillColor(ROOT.kBlue)
-        LogCLsplot_valid.SetLineWidth(0)
-        LogCLsplot_valid.Draw()
-        LogCLsplot.Draw('same')
-        
-        ROOT.ATLASLabel(0.3,0.85,"Internal")
-        ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
-        ROOT.myBoxText(0.3,0.75,0.02,CLsplot_valid.GetFillColor(),'Non-extrapolated models')
+            ROOT.ATLASLabel(0.3,0.85,"Internal")
+            ROOT.myBoxText(0.3,0.8,0.02,ROOT.kWhite,'All models')
+            ROOT.myBoxText(0.3,0.75,0.02,CLsPlot_valid.GetFillColor(),'Non-extrapolated models')
+            # HACKHACKHACK
+            if 'Ewk' in basename:
+                # This is for an individual SR
+                ROOT.myText(0.2, 0.95, ROOT.kBlack, basename)
 
-        canvas.SetLogy()
-        canvas.Print('/'.join([dirname,'LogCLsplot.pdf']))
-        canvas.SetLogy(0)
+            canvas.SetLogy(logY)
+            if pdfname is None:
+                canvas.Print('/'.join([dirname,basename+'Plot.pdf']))
+            else:
+                canvas.Print('/'.join([dirname,pdfname+'Plot.pdf']))
+            canvas.SetLogy(0) # Always revert to a linear scale
+
+        def CLsPlot_withExpected(basename, logY=False, pdfname=None):
+
+            CLsPlot = infile.Get(basename)
+            CLsExpPlot = infile.Get(basename.replace('Obs','Exp'))
+        
+            CLsExpPlot.SetLineColor(ROOT.kBlue)
+            CLsExpPlot.Draw()
+            CLsPlot.Draw('same')
+        
+            ROOT.ATLASLabel(0.3,0.85,"Internal")
+            ROOT.myBoxText(0.3,0.8,0.02,CLsPlot.GetLineColor(),'Observed')
+            ROOT.myBoxText(0.3,0.75,0.02,CLsExpPlot.GetLineColor(),'Expected')
+            # HACKHACKHACK
+            if 'Ewk' in basename:
+                # This is for an individual SR
+                ROOT.myText(0.2, 0.95, ROOT.kBlack, basename)
+
+            canvas.SetLogy(logY)
+            if pdfname is None:
+                canvas.Print('/'.join([dirname,basename+'ExpPlot.pdf']))
+            else:
+                canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf']))
+            canvas.SetLogy(0) # Always revert to a linear scale
+
+        CLsPlot_withInvalid('CLsObs')
+        CLsPlot_withInvalid('LogCLsObs', True)
+        CLsPlot_withExpected('CLsObs')
+        CLsPlot_withExpected('LogCLsObs', True)
+
+        # Try some per-SR plots
+        pdfname = 'PerSRCLs'
+        pdfnameLog = 'PerSRLogCLs'
+        canvas.Print('/'.join([dirname,pdfname+'Plot.pdf[']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'Plot.pdf[']))
+        canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf[']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf[']))
+        for key in sorted(infile.GetListOfKeys()):
+            keyname = key.GetName()
+            if keyname.endswith('_valid'): continue
+            if keyname.startswith('CLsObs'):
+                CLsPlot_withInvalid(keyname, pdfname=pdfname)
+                CLsPlot_withExpected(keyname, pdfname=pdfname)
+            elif keyname.startswith('LogCLsObs'):
+                CLsPlot_withInvalid(keyname, True, pdfname=pdfnameLog)
+                CLsPlot_withExpected(keyname, True, pdfname=pdfnameLog)
+        canvas.Print('/'.join([dirname,pdfname+'Plot.pdf]']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'Plot.pdf]']))
+        canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf]']))
+        canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf]']))
 
         NSRname = '/'.join([dirname,'NSRplot.pdf'])
         NSRplot = infile.Get('NSRplot')
@@ -402,9 +640,11 @@ class Combiner:
         canvas.Print(NSRname+']')
 
         # Add some useful printout too
-        Ninvalid = CLsplot.Integral() - CLsplot_valid.Integral()
+        CLsObsPlot = infile.Get('CLsObs')
+        CLsObsPlot_valid = infile.Get('CLsObs_valid')
+        Ninvalid = CLsObsPlot.Integral() - CLsObsPlot_valid.Integral()
         print 'Number of invalid models :',Ninvalid
-        Nexcluded = CLsplot.Integral(0,CLsplot.GetXaxis().FindBin(0.049))
+        Nexcluded = CLsObsPlot.Integral(0,CLsObsPlot.GetXaxis().FindBin(0.049))
         print 'Number of excluded models:',Nexcluded
 
     def LatexSummary(self, dirname):
@@ -514,6 +754,9 @@ class Combiner:
                 latexSR = 'SR-DS-lowMass'
             writeLine('2$\\tau$ '+latexSR, SR)
 
+        latexfile.write('\\midrule\n')
+        writeLine('All SRs', 'total')
+
         # Finish the file off
         latexfile.write('\\bottomrule\n')
         latexfile.write('\\end{tabular}\n')
@@ -544,6 +787,11 @@ if __name__ == '__main__':
         dest = "truncate",
         help = "Truncate CLs values below 1e-6")
     parser.add_argument(
+        "-e", "--useexpected",
+        action = 'store_true',
+        dest = "useexpected",
+        help = "Use expected CLs to determine the best results")
+    parser.add_argument(
         "-n", "--nmodels",
         type = int,
         dest = "nmodels",
@@ -553,6 +801,11 @@ if __name__ == '__main__':
         action = "store_true",
         dest = "truthlevel",
         help = "Get yields from evgen rather than official MC")
+    parser.add_argument(
+        "--systematic",
+        action = "store_true",
+        dest = "systematic",
+        help = "Try a systematic variation of the CLs calibration")
     cmdlinearguments = parser.parse_args()
 
     import ROOT
@@ -570,16 +823,25 @@ if __name__ == '__main__':
         subdirname += '_privateMC'
     else:
         subdirname += '_officialMC'
+    if cmdlinearguments.useexpected:
+        subdirname += '_bestExpected'
+    else:
+        subdirname += '_bestObserved'
+    if cmdlinearguments.systematic:
+        subdirname += '_systematic'
     outdirname = '/'.join(['results',subdirname])
     if cmdlinearguments.nmodels:
         outdirname += '_test'
 
     CLsdir = 'plots_privateMC' if cmdlinearguments.truthlevel else 'plots_officialMC'
+    if cmdlinearguments.systematic:
+        CLsdir += '_systematic'
     obj = Combiner('Data_Yields/SummaryNtuple_STA_evgen.root',
                    '/'.join([CLsdir,'calibration.root']))
     if cmdlinearguments.all:
         obj.strategy = cmdlinearguments.strategy
         obj.truncate = cmdlinearguments.truncate
+        obj.useexpected = cmdlinearguments.useexpected
         obj.ReadNtuple(outdirname, cmdlinearguments.nmodels)
     obj.PlotSummary(outdirname)
     obj.LatexSummary(outdirname)

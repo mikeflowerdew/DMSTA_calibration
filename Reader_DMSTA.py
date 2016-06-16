@@ -19,6 +19,14 @@ class DMSTAReader:
         '2L': 'EwkTwoLepton',
         '2T': 'EwkTwoTau',
         }
+
+    # Veto reading certain model/SR combinations
+    # This should be used VERY sparingly, but seems to be the only
+    # way to get some SR calibrations to look remotely sensible
+    # analysis/SR strings are the keys, and the lists are the DSIDs to skip for that SR
+    vetodata = {
+        'EwkFourLepton_SR0Z': [255054,254844],
+        }
     
     # Gah, way too many arguments - could fix with slots if I have time
     def __init__(self, yieldfile='Data_Yields/SummaryNtuple_STA_sim.root',
@@ -31,7 +39,7 @@ class DMSTAReader:
         The analysis names are taken from self.analysisdict.keys(), and the SR names are deduced from the file names.
         The ntuple is in the format described in https://twiki.cern.ch/twiki/bin/view/AtlasProtected/SUSYRun1pMSSMSummaryNtuple
         The file format column-based with whitespace separation and should look like
-        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down
+        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down   CL_s_expected
         Lines beginning with a # are regarded as comments and ignored.
         The dataset will be used to label the model.
         Lines with non-numeric data will be ignored.
@@ -53,11 +61,14 @@ class DMSTAReader:
         self.__hffile = HFfile
         self.__DSIDdict = {} # Formed from the DSlist in a bit
         
-    def ReadFiles(self, officialMC=True):
+    def ReadFiles(self, officialMC=True, systematic=False):
         """Returns a list of SignalRegion objects, as required by the CorrelationPlotter.
         The flag sets whether the truth yields are taken from the official MC (default)
         or the original private evgen.
+        The third argument can be used to try systematic variations of the fits.
         """
+
+        self.systematic = systematic
 
         # This is what we want to return
         result = []
@@ -164,6 +175,16 @@ class DMSTAReader:
 
                 analysisSR = datum.name
 
+                # See if we should skip this entry
+                # Killing the yield info is enough: we don't need to remove the CL values
+                try:
+                    veto = DSID in self.vetodata[analysisSR]
+                    if veto:
+                        continue
+                except KeyError:
+                    # analysisSR not in vetolist: we're OK to go on
+                    pass
+
                 # Get the yield from the official samples
                 truthyield = getattr(entry, '_'.join([branchprefix,'ExpectedEvents',datum.branchname]))
                 trutherror = getattr(entry, '_'.join([branchprefix,'ExpectedError',datum.branchname]))
@@ -234,7 +255,7 @@ class DMSTAReader:
             obj = next((x for x in data if x.name == analysisSR), None)
             if obj is None:
                 # First time we've looked at this analysisSR
-                obj = SignalRegion(analysisSR, ['LogCLs'])
+                obj = SignalRegion(analysisSR, ['LogCLsObs','LogCLsExp'])
                 data.append(obj)
 
                 # Store the equivalent ntuple branch name for convenience later
@@ -247,13 +268,14 @@ class DMSTAReader:
             numericdata = ast.literal_eval(''.join(splitline[1:]))
 
             try:
-                CLs = float(numericdata[1])
+                CLsObs = float(numericdata[1])
+                CLsExp = float(numericdata[2])
             except IndexError:
                 print 'WARNING: Incomplete data in %s, %s'%(fname,SRname)
                 print line
                 continue
             except:
-                print 'WARNING: Invalid CLs value %s in %s, %s'%(numericdata[1],fname,SRname)
+                print 'WARNING: Invalid CLs values %s and %s in %s, %s'%(numericdata[1],numericdata[2],fname,SRname)
                 continue
 
             try:
@@ -262,16 +284,18 @@ class DMSTAReader:
             except KeyError:
                 datum = obj.AddData(modelname)
 
-            if CLs and CLs > 0:
-                datum['LogCLs'] = math.log10(CLs)
-                
+            if CLsObs and CLsObs > 0:
+                datum['LogCLsObs'] = math.log10(CLsObs)
+            if CLsExp and CLsExp > 0:
+                datum['LogCLsExp'] = math.log10(CLsExp)
+
         f.close() # Let's be tidy
 
         return data
 
     def __ReadPmssmFiles(self, data, analysis, fname, SRname):
         """Homebrewed reading of tab-separated data files. The assumed format is:
-        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down
+        Dataset   CL_b    CL_b_up   CL_b_down   CL_s+b   CL_s+b_up   CL_s+b_down   CL_s_expected
         """
 
         analysisSR = '_'.join([self.analysisdict[analysis],SRname])
@@ -280,7 +304,7 @@ class DMSTAReader:
         obj = next((x for x in data if x.name == analysisSR), None)
         if obj is None:
             # First time we've looked at this analysisSR
-            obj = SignalRegion(analysisSR, ['LogCLs'])
+            obj = SignalRegion(analysisSR, ['LogCLsObs','LogCLsExp'])
             data.append(obj)
 
             # Store the equivalent ntuple branch name for convenience later
@@ -303,23 +327,32 @@ class DMSTAReader:
                 modelpoint = int(splitline[0])
             except ValueError:
                 continue # Line of text
-            
+
+            try:
+                CLsExp  = float(splitline[7])
+            except IndexError:
+                # In this specific case, this might be OK,
+                # if expected CLs values have not yet been provided
+                CLsExp = None
+
             try:
                 # Find all the input data first
-                CLb = float(splitline[1])
-                CLsb = float(splitline[4])
+                CLbObs  = float(splitline[1])
+                CLsbObs = float(splitline[4])
             except:
                 print 'WARNING: Malformed line in %s: %s'%(fname,line)
                 # Carry on, hopefully we can just analyse the other results
                 continue
 
-            # Check that either CLsb or CLb were read OK
-            if CLb is None and CLsb is None: continue
+            # Check that at least something was read in OK
+            if CLbObs is None and CLsbObs is None and CLsExp is None: continue
 
-            if not CLb and CLb is not None:
-                print 'WARNING: CLb is zero in %s, model %s'%(fname,modelpoint)
-            if not CLsb and CLsb is not None:
-                print 'WARNING: CLsb is zero in %s, model %s'%(fname,modelpoint)
+            if not CLbObs and CLbObs is not None:
+                print 'WARNING: CLbObs is zero in %s, model %s'%(fname,modelpoint)
+            if not CLsbObs and CLsbObs is not None:
+                print 'WARNING: CLsbObs is zero in %s, model %s'%(fname,modelpoint)
+            if not CLsExp and CLsExp is not None:
+                print 'WARNING: CLsExp is zero in %s, model %s'%(fname,modelpoint)
 
             try:
                 datum = obj.data[modelpoint]
@@ -327,8 +360,10 @@ class DMSTAReader:
             except KeyError:
                 datum = obj.AddData(modelpoint)
 
-            if CLb and CLsb:
-                datum['LogCLs'] = math.log10(CLsb/CLb)
+            if CLbObs and CLsbObs:
+                datum['LogCLsObs'] = math.log10(CLsbObs/CLbObs)
+            if CLsExp and CLsExp > 0:
+                datum['LogCLsExp'] = math.log10(CLsExp)
 
         f.close() # Let's be tidy
         
@@ -350,7 +385,7 @@ class DMSTAReader:
         return SRname
     
     def __SetupFitFunc(self, SRobj):
-        """Sets up fitting function, to avoid duplication in the
+        """Sets up fitting functions, to avoid duplication in the
         YAML and pMSSM file-reading methods.
         Could be extended to SR-specific configs using SRobj.name
         """
@@ -368,6 +403,11 @@ class DMSTAReader:
             # Compare the error of the log coefficient to its value
             normcoeff = valueWithError(fitfunc.GetParameter(0),fitfunc.GetParError(0))
             if abs(normcoeff.error) > 0.2*abs(normcoeff.value):
+                return False
+
+            # Check the x-range. We want at least one excluded point
+            xmin = min([graph.GetX()[i] for i in range(graph.GetN())])
+            if xmin > math.log10(0.05):
                 return False
 
             print 'Success!'
@@ -412,38 +452,119 @@ class DMSTAReader:
 
             return result
 
+        def SystematicFactor(graph, fitfunc):
+            """Analyses the fitted function, and determines an appropriate
+            scale factor for the normalisation, corresponding to something
+            like a 1-sigma variation. The definition is a bit arbitrary,
+            but hopefully better than the naive statistical error from the fit.
+            In case of a problem, likely a bad fit anyway, returns 1.
+            """
+
+            # The graph name includes the SR name, in case we need it
+            graphname = graph.GetName()
+
+            # The central idea: simultaneously compute a "chi^2" of the
+            # fractional deviation between the graph and function, as well
+            # as the average fractional error on the truth yield
+            sumdiff2 = 0.
+            sumerr = 0.
+            Npoints = 0
+
+            for ipoint in range(graph.GetN()):
+
+                ypoint = graph.GetY()[ipoint]
+                xpoint = graph.GetX()[ipoint]
+                yfunc = fitfunc.Eval(xpoint)
+                if not ypoint or not yfunc:
+                    continue
+                if xpoint < fitfunc.xmin or xpoint > fitfunc.xmax:
+                    continue
+
+                # All tests passed OK, add this point into the calculation
+                Npoints += 1
+                sumdiff2 += (ypoint - yfunc)*(ypoint - yfunc)/(yfunc*yfunc)
+                sumerr += graph.GetEY()[ipoint]/ypoint
+
+            if not Npoints:
+                return 1.
+
+            # Now treat sumerr/Npoints and sqrt(sumdiff2)/Npoints as uncorrelated errors
+            toterr2 = sumerr*sumerr + sumdiff2
+            error = math.sqrt(toterr2)/Npoints
+
+            # We want the end result of scaling the graph by (1+error)
+            # With the definition of the normalisation parameter, we must return the inverse of this.
+            return 1./(1.+error)
+
+#             # Ad-hoc adjustment for systematics
+#             if self.systematic and 'TwoLep' not in graphname:
+#                 # Set a common default first
+#                 scalefact = 0.5
+#                 if 'SR0Z' in graphname: scalefact = 0.7
+#                 elif 'ThreeLep' in graphname:
+#                     scalefact = 0.8
+#                     if 'SR0a_2' in graphname: scalefact = 0.7 # Catches bin 20 too, but this cannot be fitted anyway
+#                     elif 'SR0a_4' in graphname: scalefact = 0.7
+#                     elif 'SR0a_8' in graphname: scalefact = 0.5
+#                     elif 'SR0a_9' in graphname: scalefact = 0.7
+#                     elif 'SR0a_10' in graphname: scalefact = 0.7
+#                     elif 'SR0a_12' in graphname: scalefact = 0.6
+#                     elif 'SR0a_16' in graphname: scalefact = 0.7
+#                     elif 'SR0a_18' in graphname: scalefact = 0.5
+#                     elif 'SR0b' in graphname: scalefact = 0.5
+#
+#             return scalefact
+
         # Check first if we have anything to configure
         if not self.__hffile:
             return
-        # Extract HistFitter curve from the root file
+        # Extract HistFitter curves from the root file
         funcfile = ROOT.TFile.Open(self.__hffile)
 
         if funcfile and not funcfile.IsZombie():
 
-            # Extracting the TF1 object directly doesn't seem to work,
+            # Extracting the TF1 objects directly doesn't seem to work,
             # as the normalisation parameter becomes fixed.
-            # So, extract the graph object instead and recreate the TF1.
+            # So, extract the graph objects instead and recreate the TF1.
             # The real SR name is from "SR" to the end.
             shortSRname = SRobj.name[SRobj.name.index('SR'):]
-            graph = funcfile.Get(shortSRname+'_graph')
+            graphObs = funcfile.Get(shortSRname+'_graphObs')
+            graphExp = funcfile.Get(shortSRname+'_graphExp')
 
             # FIXME: hard-coded -6...
-            SRobj.fitfunctions['LogCLs'] = ROOT.TF1('fitfunc', lambda x,p: graph.Eval(x[0])/p[0], -6, 0, 1)
+            SRobj.fitfunctions['LogCLsObs'] = ROOT.TF1('fitfunc', lambda x,p: graphObs.Eval(x[0])/p[0], -6, 0, 1)
+            SRobj.fitfunctions['LogCLsExp'] = ROOT.TF1('fitfunc', lambda x,p: graphExp.Eval(x[0])/p[0], -6, 0, 1)
+
+            # Store the original graph, as this is the only meaningful way to copy the function
+            SRobj.fitfunctions['LogCLsObs'].graph = graphObs
+            SRobj.fitfunctions['LogCLsExp'].graph = graphExp
 
             # Extract the TF1 object - does not work.
-            # SRobj.fitfunctions['LogCLs'] = funcfile.Get(shortSRname)
-            # SRobj.fitfunctions['LogCLs'].SetName('fitfunc') # for later convenience
-            SRobj.fitfunctions['LogCLs'].SetParameter(0,1.)
+            # SRobj.fitfunctions['LogCLsObs'] = funcfile.Get(shortSRname)
+            # SRobj.fitfunctions['LogCLsObs'].SetName('fitfunc') # for later convenience
+            SRobj.fitfunctions['LogCLsObs'].SetParameter(0,1.)
+            SRobj.fitfunctions['LogCLsExp'].SetParameter(0,1.)
 
             # Restrict the fit range to small CLs values
-            # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.5)
-            SRobj.fitfunctions['LogCLs'].xmin = -6.
-            SRobj.fitfunctions['LogCLs'].xmax = -0.5
+            # SRobj.fitfunctions['LogCLsObs'].SetRange(-6, -0.5)
+            SRobj.fitfunctions['LogCLsObs'].xmin = -6.
+            SRobj.fitfunctions['LogCLsExp'].xmin = -6.
+            SRobj.fitfunctions['LogCLsObs'].xmax = -0.5
+            SRobj.fitfunctions['LogCLsExp'].xmax = -0.5
+
+            if self.systematic:
+                if 'TwoLep' in SRobj.name:
+                    SRobj.fitfunctions['LogCLsObs'].xmax = 0.0
+                    SRobj.fitfunctions['LogCLsExp'].xmax = 0.0
+                else:
+                    SRobj.fitfunctions['LogCLsObs'].SystematicFactor = SystematicFactor
+                    SRobj.fitfunctions['LogCLsExp'].SystematicFactor = SystematicFactor
 
             # Special case(s)
-            if 'SR0Z' in SRobj.name:
-                # SRobj.fitfunctions['LogCLs'].SetRange(-6, -0.6)
-                SRobj.fitfunctions['LogCLs'].xmax = -0.6
+            # Now left just as an example
+            # if 'SR0Z' in SRobj.name:
+            #     SRobj.fitfunctions['LogCLsObs'].xmax = -0.6
+            #     SRobj.fitfunctions['LogCLsExp'].xmax = -0.6
 
             SRobj.GoodFit = GoodFit
             SRobj.FitErrorGraph = FitErrorGraph

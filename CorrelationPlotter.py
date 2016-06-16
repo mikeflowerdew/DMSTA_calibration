@@ -144,6 +144,12 @@ class CorrelationPlotter:
                     # Compute and store the error on the fit
                     graph.fiterrorgraph = dataobj.FitErrorGraph(graph)
 
+                else:
+                    # If the graph is empty, set flags to indicate a lack of fit
+                    graph.goodfit = False
+                    graph.fiterrorgraph = None
+                    self.__fitresults[graphkey] = None
+
                 # End of loop over different CL types
                 pass
 
@@ -245,8 +251,20 @@ class CorrelationPlotter:
         # ###########################################
         # Per-SR scatter plots
 
+        # Make a set to keep track of which CL types we have
+        CLtypes = set()
+        # Also, a set for the "real" analysis/SR combinations
+        SRs = set()
+
         # Loop over the correlation graphs
         for analysisSR,graph in self.__correlations.items():
+
+            # Extract and record the CL type and SR name
+            # This is stored at the end of the analysisSR name
+            CLtype = analysisSR.split('_')[-1]
+            CLtypes.add(CLtype)
+            SRname = analysisSR.replace('_'+CLtype,'')
+            SRs.add(SRname)
 
             graph.SetMarkerSize(1)
             graph.SetMarkerStyle(ROOT.kFullCircle)
@@ -269,7 +287,8 @@ class CorrelationPlotter:
             graph.GetYaxis().SetRangeUser(0,graph.GetYaxis().GetXmax())
 
             # Check if the x-axis goes negative (ie log(CLs) vs CLs)
-            if graph.GetXaxis().GetXmin() >= 0:
+            isLinearCLs = graph.GetXaxis().GetXmin() >= 0
+            if isLinearCLs:
                 # Linear CL scale
 
                 # Set x-axis minimum to zero
@@ -293,6 +312,25 @@ class CorrelationPlotter:
             # Draw again (this is the pretty one!)
             graph.Draw('ap')
 
+            # Draw a guide line at CLs = 0.05
+            exclusionLine = ROOT.TLine()
+            exclusionLine.SetLineColor(ROOT.kGray)
+            exclusionLine.SetLineWidth(4)
+            exclusionLine.SetLineStyle(7) #ROOT.kDashed)
+            import math
+            xvalue = 0.05 if isLinearCLs else math.log10(0.05)
+            ymax = graph.GetYaxis().GetXmax()
+            exclusionLine.DrawLine(xvalue,0, xvalue,ymax)
+
+            # Add some text to explain what the grey line is?
+            # I can't seem to get this to look right...
+            # exclusionText = ROOT.TLatex()
+            # exclusionText.SetTextColor(ROOT.kGray)
+            # exclusionText.SetTextAngle(90)
+            # exclusionText.SetTextAlign(21) # Centre bottom adjusted
+            # exclusionText.SetTextSize(0.04)
+            # exclusionText.DrawLatex(xvalue, ymax*2./3, 'CLs = 0.05')
+
             # Draw the fit function error band next, if it exists
             if graph.fiterrorgraph:
                 graph.fiterrorgraph.SetMarkerSize(0)
@@ -305,16 +343,24 @@ class CorrelationPlotter:
                 f.Draw('same')
 
                 # Put the fit parameters on the plot, for convenience
-                printy = 0.9 # Start position for listing the fit parameters
-                for ipar in range(f.GetNpar()):
-                    printy -= 0.05
-                    ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
+                # Have one parameter as a special case
+                if f.GetNpar() == 1:
+                    ROOT.myText(0.58,0.85, ROOT.kBlack, '#LT#epsilon #GT = %5.2f #pm%5.2f'%(f.GetParameter(0),f.GetParError(0)))
+                else:
+                    printy = 0.9 # Start position for listing the fit parameters
+                    for ipar in range(f.GetNpar()):
+                        printy -= 0.05
+                        ROOT.myText(0.6,printy, ROOT.kBlack, 'p%i: %5.2f #pm %5.2f'%(ipar,f.GetParameter(ipar),f.GetParError(ipar)))
 
             # Add the graph title, so you can see which SR this is
             ROOT.myText(0.2, 0.95, ROOT.kBlack, graph.GetTitle())
 
             # And an ATLAS label!
             ROOT.ATLASLabel(0.6,0.9,"Internal")
+
+            # Finally, say if the fit on the plot is good or not
+            if not graph.goodfit:
+                ROOT.myText(0.2, 0.2, ROOT.kRed, 'Bad fit')
 
             # Open a multi-page pdf file
             # This adds the current canvas, ie completely "natural" x and y axes
@@ -351,81 +397,117 @@ class CorrelationPlotter:
             # End of loop over per-SR correlation graphs (scatter plots)
             pass
 
+        # Let's just do a little check
+        if len(self.__fitresults) != len(SRs)*len(CLtypes):
+            print '========================================='
+            print 'ERROR: Somehow %i SRs and %i CL types make %i combinations'%(len(SRs),len(CLtypes),len(self.__fitresults))
+            print 'ERROR: The next bit of code will probably crash'
+            print '========================================='
+
         # ###########################################
         # Summary plots
 
-        # Fit chi^2 summary
-        chi2plot = ROOT.TH1D('chi2plot',';;#chi^{2}/Ndof',
-                             len(self.__fitresults),-0.5,len(self.__fitresults)-0.5)
+        # Make a template for all of the histograms
+        plottemplate = ROOT.TH1D('template','',len(SRs),-0.5,len(SRs)-0.5)
 
-        # Fit probability summary
-        probplot = chi2plot.Clone('probplot')
-        probplot.GetYaxis().SetTitle('Fit probability')
+        # Fit chi^2 summary, one for each CL type
+        chi2plots = {}
+        for t in CLtypes:
+            plot = plottemplate.Clone('chi2plot_%s'%(t))
+            plot.GetYaxis().SetTitle('#chi^{2}/Ndof')
+            chi2plots[t] = plot
 
-        # Plots of the fit parameter(s)
-        paramplots = [chi2plot.Clone('param%iplot'%(i)) for i in range(self.__fitresults.values()[0].NPar())]
-        for iplot in range(len(paramplots)):
-            paramplots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
+        # Fit probability summary, one for each CL type
+        probplots = {}
+        for t in CLtypes:
+            plot = plottemplate.Clone('probplot_%s'%(t))
+            plot.GetYaxis().SetTitle('Fit probability')
+            probplots[t] = plot
+
+        # Plots of the fit parameter(s), N for each CL type
+        paramplots = {}
+        for t in CLtypes:
+            # In some unusual configurations, it's possible that the fitresults are not properly populated,
+            # so check this now, in order to avoid a crash
+            if self.__fitresults.values()[0]:
+                plots = [plottemplate.Clone('param%iplot_%s'%(i,t)) for i in range(self.__fitresults.values()[0].NPar())]
+                for iplot in range(len(plots)):
+                    plots[iplot].GetYaxis().SetTitle('Parameter %i'%(iplot))
+                paramplots[t] = plots
+            else:
+                paramplots[t] = []
         
         # Loop over the fit results and fill the summary graphs
-        for ibin,analysisSR in enumerate(sorted(self.__fitresults.keys())):
+        for CLtype in CLtypes:
+            for ibin,analysisSR in enumerate(sorted(SRs)):
 
-            # Use the analysis/SR name as a bin label
-            chi2plot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
-            probplot.GetXaxis().SetBinLabel(ibin+1, analysisSR)
-            for iplot in range(len(paramplots)):
-                paramplots[iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+                # Reconstruct the full key for (eg) self.__fitresults
+                analysisSRkey = '_'.join([analysisSR,CLtype])
 
-            # Check if we have any data at all
-            if self.__fitresults[analysisSR] is None:
-                continue
+                # Use the analysis/SR name as a bin label
+                chi2plots[CLtype].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+                probplots[CLtype].GetXaxis().SetBinLabel(ibin+1, analysisSR)
+                for iplot in range(len(paramplots[CLtype])):
+                    paramplots[CLtype][iplot].GetXaxis().SetBinLabel(ibin+1, analysisSR)
 
-            # Fill the three plots
-            if self.__fitresults[analysisSR].Ndf():
-                chi2plot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Chi2()/self.__fitresults[analysisSR].Ndf())
+                # Check if we have any data at all
+                if self.__fitresults[analysisSRkey] is None:
+                    continue
+
+                # Fill the three plots
+                if self.__fitresults[analysisSRkey].Ndf():
+                    chi2plots[CLtype].SetBinContent(ibin+1, self.__fitresults[analysisSRkey].Chi2()/self.__fitresults[analysisSRkey].Ndf())
                 
-            probplot.SetBinContent(ibin+1, self.__fitresults[analysisSR].Prob())
+                probplots[CLtype].SetBinContent(ibin+1, self.__fitresults[analysisSRkey].Prob())
 
-            for iplot in range(len(paramplots)):
-                paramplots[iplot].SetBinContent(ibin+1, abs(self.__fitresults[analysisSR].Value(iplot)))
-                paramplots[iplot].SetBinError(ibin+1, self.__fitresults[analysisSR].Error(iplot))
+                for iplot in range(len(paramplots[CLtype])):
+                    paramplots[CLtype][iplot].SetBinContent(ibin+1, abs(self.__fitresults[analysisSRkey].Value(iplot)))
+                    paramplots[CLtype][iplot].SetBinError(ibin+1, self.__fitresults[analysisSRkey].Error(iplot))
 
-            # End of loop over fit results
+                # End of loop over bins
+            # End of loop over CL types
 
         # Make sure the labels can be read, and adjust the canvas margin to fit
-        chi2plot.GetXaxis().LabelsOption('v')
-        chi2plot.GetXaxis().SetLabelSize(0.03)
-        
-        probplot.GetXaxis().LabelsOption('v')
-        probplot.GetXaxis().SetLabelSize(0.03)
-        
-        for iplot in range(len(paramplots)):
-            paramplots[iplot].GetXaxis().LabelsOption('v')
-            paramplots[iplot].GetXaxis().SetLabelSize(0.03)
+        for plot in chi2plots.values():
+            plot.GetXaxis().LabelsOption('v')
+            plot.GetXaxis().SetLabelSize(0.03)
+
+        for plot in probplots.values():
+            plot.GetXaxis().LabelsOption('v')
+            plot.GetXaxis().SetLabelSize(0.03)
+
+        for plots in paramplots.values():
+            for iplot in range(len(plots)):
+                plots[iplot].GetXaxis().LabelsOption('v')
+                plots[iplot].GetXaxis().SetLabelSize(0.03)
 
         oldmargin = self.__canvas.GetBottomMargin()
         self.__canvas.SetBottomMargin(0.3)
 
-        # Draw the chi^2 plot
-        chi2plot.SetMinimum(0)
-        chi2plot.Draw()
-        ROOT.ATLASLabel(0.5,0.85,"Internal")
-        self.__canvas.Print('/'.join([outdir,'chi2.pdf']))
+        # Draw the chi^2 plots
+        for CLtype,chi2plot in chi2plots.items():
+            chi2plot.SetMinimum(0)
+            chi2plot.Draw()
+            ROOT.ATLASLabel(0.5,0.85,"Internal")
+            self.__canvas.Print('/'.join([outdir,'chi2_%s.pdf'%(CLtype)]))
 
-        # Draw the fit probability plot
-        probplot.SetMinimum(0)
-        probplot.Draw()
-        ROOT.ATLASLabel(0.5,0.85,"Internal")
-        self.__canvas.Print('/'.join([outdir,'prob.pdf']))
+        # Draw the fit probability plots
+        for CLtype,probplot in probplots.items():
+            probplot.SetMinimum(0)
+            probplot.Draw()
+            ROOT.ATLASLabel(0.5,0.85,"Internal")
+            self.__canvas.Print('/'.join([outdir,'prob_%s.pdf'%(CLtype)]))
 
         # Draw the fit parameter plots
-        for iplot in range(len(paramplots)):
-            paramplots[iplot].SetMaximum(2.)
-            paramplots[iplot].Draw()
-            ROOT.ATLASLabel(0.2,0.95,"Internal")
-            self.__canvas.Print('/'.join([outdir,'param%i.pdf('%(iplot)]))
-            self.__canvas.SetLogy()
-            self.__canvas.Print('/'.join([outdir,'param%i.pdf)'%(iplot)]))
+        for CLtype,plots in paramplots.items():
+            for iplot in range(len(plots)):
+                plots[iplot].SetMaximum(2.)
+                plots[iplot].Draw()
+                ROOT.ATLASLabel(0.2,0.95,"Internal")
+                self.__canvas.Print('/'.join([outdir,'param%i_%s.pdf('%(iplot,CLtype)]))
+                self.__canvas.SetLogy()
+                self.__canvas.Print('/'.join([outdir,'param%i_%s.pdf)'%(iplot,CLtype)]))
+                self.__canvas.SetLogy(0) # Put the scale back to linear
 
         # Reset the canvas in case the method is extended (or the canvas reused)
         self.__canvas.SetBottomMargin(oldmargin)
@@ -493,10 +575,19 @@ class CorrelationPlotter:
             # The only way I can find to properly store the region
             # -0.5 < log(CLs) < 0.0 is to clone the original function.
             # It really seems as if this part of the function is lost during the fit...?
-            newfunc = fitfunc.Clone()
+            # Even worse, the functional form is lost in a call to Clone(),
+            # so reconstruct it from the original graph
+            newfunc = ROOT.TF1('fitfunc', lambda x,p: fitfunc.graph.Eval(x[0])/p[0], -6, 0, 1)
+
+            # See if we need to adjust the normalisation
+            try:
+                scalefact = fitfunc.SystematicFactor(graph, fitfunc)
+            except AttributeError:
+                scalefact = 1.0
+
             for iparam in range(newfunc.GetNpar()):
-                newfunc.SetParameter(iparam, finalfunc.GetParameter(iparam))
-                newfunc.SetParError(iparam, finalfunc.GetParError(iparam))
+                newfunc.SetParameter(iparam, scalefact*finalfunc.GetParameter(iparam))
+                newfunc.SetParError(iparam, scalefact*finalfunc.GetParError(iparam))
             graph.GetListOfFunctions().Clear()
             # finalfunc.SetName(finalfunc.GetName()+'_old')
             graph.GetListOfFunctions().AddFirst(newfunc)
@@ -558,6 +649,11 @@ def PassArguments():
         action = "store_true",
         dest = "truthlevel",
         help = "Get yields from evgen rather than official MC")
+    parser.add_argument(
+        "--systematic",
+        action = "store_true",
+        dest = "systematic",
+        help = "Do a systematic variation, for robustness checks")
 
     return parser.parse_args()
 
@@ -615,11 +711,13 @@ if __name__ == '__main__':
         from Reader_DMSTA import DMSTAReader
 
         reader = DMSTAReader()
-        data = reader.ReadFiles(not cmdlinearguments.truthlevel)
+        data = reader.ReadFiles(not cmdlinearguments.truthlevel, cmdlinearguments.systematic)
         if cmdlinearguments.truthlevel:
             plotdir = 'plots_privateMC'
         else:
             plotdir = 'plots_officialMC'
+        if cmdlinearguments.systematic:
+            plotdir += '_systematic'
 
     if 'data' in dir():
         plotter = CorrelationPlotter(data)

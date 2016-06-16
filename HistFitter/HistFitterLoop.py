@@ -86,7 +86,7 @@ def RunOneSearch_RooStats(config, Nsig):
 
     config should be a PaperResults object, which has all the info I need to set up a simple 1-bin fit,
     while Nsig is the expected number of signal events.
-    The method returns a CLs value, or None if a problem occurred.
+    The method returns a tuple of (CLsObs,CLsExp), or None if a problem occurred.
     """
 
     # Check if the input is OK
@@ -195,8 +195,8 @@ def RunOneSearch_RooStats(config, Nsig):
     # At the end of the "with:" block, the context manager returns us to the original directory
     
     try:
-        # Return the CLs value
-        return result.GetCLs()
+        # Return the CLs values
+        return result.GetCLs(),result.GetCLsexp()
     except:
         # result does not exist, return None to indicate an error
         return None
@@ -272,24 +272,44 @@ def RunOneSearch_HistFitter(config, Nsig):
         # ########################
         # Step 3: Generate the LLH plot
 
-        ROOT.Util.GeneratePlots('results/MyUserAnalysis/SplusB_combined_NormalMeasurement_model.root', 'MyUserAnalysis', 0, 0, 0, 0, 1, 0, "", 0, "", 0)
+        # ROOT.Util.GeneratePlots('results/MyUserAnalysis/SplusB_combined_NormalMeasurement_model.root', 'MyUserAnalysis', 0, 0, 0, 0, 1, 0, "", 0, "", 0)
 
         # ########################
         # Step 4: Extract the results
         
-        NLLfile = ROOT.TFile.Open('results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root')
+        workspacefile = ROOT.TFile.Open('results/MyUserAnalysis/SplusB_combined_NormalMeasurement_model.root')
+        workspace = workspacefile.Get('combined')
         
-        NLLfunc = NLLfile.Get('nll_mu_Sig')
+        # Even though this (without the RooStats scope) is the WRONG function,
+        # It appears I need to acknowledge it before I can see the other one.
+        # Weird...
+        ROOT.get_Pvalue
 
-        print NLLfunc
-        NLLfile.ls()
+        # Leave alone except for:
+        # Third arg = number of toys
+        # Fourth arg = calculator type. 0=toys, 2=asymptotic
+        fitresult = ROOT.RooStats.get_Pvalue(workspace, True, 5000, 2, 3)
+
+        result.Summary()
+
+        fitfile.Close()
+
+        # The following lines would extract the liklihood function
+        # NLLfile = ROOT.TFile.Open('results/MyUserAnalysis/can_NLL__RooExpandedFitResult_afterFit_mu_Sig.root')
+        # NLLfunc = NLLfile.Get('nll_mu_Sig')
+        # print NLLfunc
         
         # For now, just take the NLL wrt the best fit mu value
-        NLLvalue = NLLfunc.Eval(1.)
+        # NLLvalue = NLLfunc.Eval(1.)
 
-        NLLfile.Close()
+        # NLLfile.Close()
     
-    return NLLvalue
+    try:
+        # Return the CLs values
+        return result.GetCLs(),result.GetCLsexp()
+    except:
+        # result does not exist, return None to indicate an error
+        return None
 
 # ########################################################
 # Signal yield scanning strategy
@@ -330,7 +350,7 @@ def NSigStrategy(existingResults, SRobj, granularity=0.05, logCLs=True, logMin=-
     # Special case to make sure we get to high values
     if existingResults[0][1] < 0.999:
         # Add a point corresponding to Yield=0 and CLs=1
-        existingResults.insert(0, (0,1) )
+        existingResults.insert(0, (0,1,1) )
 
     # Let's make sure we go low enough too
     # First tackle the case of a log scale
@@ -489,9 +509,9 @@ if __name__=='__main__':
                 print 'CONFIG NOT OK!!!!'
 
             # Run the fit and record the result if it makes sense
-            CLs = RunOneSearch_RooStats(config, Nsig)
-            if CLs is not None:
-                results.append( (Nsig,CLs) )
+            fitresults = RunOneSearch_RooStats(config, Nsig)
+            if fitresults is not None:
+                results.append( (Nsig,fitresults[0],fitresults[1]) )
             
             # If we're out of values, give a chance to replenish them
             # If there's nothing left to do, NSigStrategy should return an empty list
@@ -515,29 +535,40 @@ if __name__=='__main__':
         print '============= Printing the Yield search pattern for',config.SR
         pprint(YieldOrder)
 
-        # Store the calibration curve in a TGraph, which can then be converted to TF1
-        graph = ROOT.TGraph()
-        graph.SetName(config.SR+'_graph')
+        # Store the calibration curves in TGraph objects, which can then be converted to TF1 objects
+        graphObs = ROOT.TGraph()
+        graphObs.SetName(config.SR+'_graphObs')
+        graphExp = ROOT.TGraph()
+        graphExp.SetName(config.SR+'_graphExp')
+
         results.sort() # Just in case
-        for Nsig,CLs in results:
-            graph.SetPoint(graph.GetN(),math.log10(CLs) if doLogCLs else CLs,Nsig)
+        for Nsig,CLsObs,CLsExp in results:
+            graphObs.SetPoint(graphObs.GetN(),math.log10(CLsObs) if doLogCLs else CLsObs,Nsig)
+            graphExp.SetPoint(graphExp.GetN(),math.log10(CLsExp) if doLogCLs else CLsExp,Nsig)
 
         # Amazingly this works!
         if doLogCLs:
-            function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), logMin, 0, 1)
+            functionObs = ROOT.TF1(config.SR+'_Obs', lambda x,p: p[0]*graphObs.Eval(x[0]), logMin, 0, 1)
+            functionExp = ROOT.TF1(config.SR+'_Exp', lambda x,p: p[0]*graphExp.Eval(x[0]), logMin, 0, 1)
         else:
-            function = ROOT.TF1(config.SR, lambda x,p: p[0]*graph.Eval(x[0]), 0, 1, 1)
-        function.SetParameter(0,1) # Default "normalisation"
+            functionObs = ROOT.TF1(config.SR+'_Obs', lambda x,p: p[0]*graphObs.Eval(x[0]), 0, 1, 1)
+            functionExp = ROOT.TF1(config.SR+'_Exp', lambda x,p: p[0]*graphExp.Eval(x[0]), 0, 1, 1)
+        functionObs.SetParameter(0,1) # Default "normalisation"
+        functionExp.SetParameter(0,1) # Default "normalisation"
 
         # Make sure we write both the graph and the function to the output file
-        thingsToWrite.append(graph.Clone())
-        thingsToWrite.append(function.Clone())
+        thingsToWrite.append(graphObs.Clone())
+        thingsToWrite.append(functionObs.Clone())
+        thingsToWrite.append(graphExp.Clone())
+        thingsToWrite.append(functionExp.Clone())
 
         # Store a copy now, in case later SRs fail
         outfilename = 'result_logCLs.root' if doLogCLs else 'result_linearCLs.root'
         outfile = ROOT.TFile.Open('/'.join([config.SR,outfilename]),'RECREATE')
-        graph.Write()
-        function.Write()
+        graphObs.Write()
+        functionObs.Write()
+        graphExp.Write()
+        functionExp.Write()
         outfile.Close()
 
     # ########################
