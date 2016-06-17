@@ -419,6 +419,10 @@ class Combiner:
             pass
         perSRCLsfiles = {} # A full record of model ID vs CLs value
         def addPerSRCLsresult(key, model, CLsObs, CLsExp):
+            # Only write these if we're in "subset" mode,
+            # in which case we have an event list
+            if not EL:
+                return
             line = ','.join([str(model),str(CLsObs),str(CLsExp)]) + '\n'
             try:
                 perSRCLsfiles[key].write(line)
