@@ -171,6 +171,11 @@ class DMSTAReader:
             except KeyError:
                 continue # Not interested (yet)
 
+            # Experimental correction - use official MC only for "wEW" and "hEW"
+            # DSIDbranchprefix = branchprefix
+            # if DSID < 254675 or DSID in [254979,254980]:
+            #     DSIDbranchprefix = 'EW'
+
             # Loop over known analyses/SRs and look for the truth yield
             for datum in data:
 
