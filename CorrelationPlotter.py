@@ -560,7 +560,7 @@ class CorrelationPlotter:
             elif fitresult.NPar() == 0:
                 print '%s: No free parameters'%(key)
             elif fitresult.NPar() == 1:
-                print '%s: %.4f +- %.2f %%'%(key,fitresult.Value(0),100.*fitresult.Error(0)/fitresult.Value(0))
+                print '%s: %.4f +- %.4f'%(key,fitresult.Value(0),fitresult.Error(0))
             else:
                 print '%s:'%(key)
                 for i in range(fitresult.NPar()):

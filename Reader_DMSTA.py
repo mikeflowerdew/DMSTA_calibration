@@ -26,6 +26,7 @@ class DMSTAReader:
     # analysis/SR strings are the keys, and the lists are the DSIDs to skip for that SR
     vetodata = {
         'EwkFourLepton_SR0Z': [255054,254844],
+        # 'EwkThreeLepton_3L_SR0a_16': [254649], # Possible outlier with log(CLs) ~ -1.3
         }
     
     # Gah, way too many arguments - could fix with slots if I have time
@@ -588,9 +589,9 @@ class DMSTAReader:
 
             # Special case(s)
             # Now left just as an example
-            if 'SR0a_16' in SRobj.name:
-                SRobj.fitfunctions['LogCLsObs'].xmax = -0.9
-                SRobj.fitfunctions['LogCLsExp'].xmax = -0.7
+            # if 'SR0a_16' in SRobj.name:
+            #     SRobj.fitfunctions['LogCLsObs'].xmax = -0.9
+            #     SRobj.fitfunctions['LogCLsExp'].xmax = -0.7
 
             SRobj.GoodFit = GoodFit
             SRobj.FitErrorGraph = FitErrorGraph
