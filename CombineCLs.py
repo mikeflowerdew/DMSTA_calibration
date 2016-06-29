@@ -98,6 +98,40 @@ class Combiner:
         # Nothing more to do
         return
 
+    @classmethod
+    def __HepDataSRname(cls, SR):
+        """Reinterpret the in-code SR name with a theorist-friendly one for HepData.
+        """
+
+        splitname = SR.split('_')
+
+        if splitname[0] == 'EwkTwoLepton':
+            if 'mT' in splitname[-1]:
+                threshold = 90 if 'a' in splitname[-1] else (120 if 'b' in splitname[-1] else 150)
+                return '2L_SR_mT2_%i'%(threshold)
+            else: # Zjets or WWx
+                return '2L_SR_%s'%(splitname[-1])
+
+        elif splitname[0] == 'EwkThreeLepton':
+            if 'SR0a' in splitname[-2]:
+                return '3L_SR_0tau_a_bin_%s'%(splitname[-1])
+            elif splitname[-1] == 'SR0b':
+                return '3L_SR_0tau_b'
+            elif splitname[-1] == 'SR1SS':
+                return '3L_SR_1tau'
+
+        elif splitname[0] == 'EwkFourLepton':
+            return '4L_%s'%(splitname[-1])
+
+        elif splitname[0] == 'EwkTwoTau':
+            if splitname[2].startswith('C1'):
+                return '2tau_SR_%s'%(splitname[2])
+            else:
+                return '2tau_SR_DS_lowMass' if 'low' in splitname[-1] else '2tau_SR_DS_highMass'
+
+        # If we get here, something went wrong
+        return SR #'ERROR'
+
     def ReadCalibrations(self, calibfilename):
         """Reads all TF1 objects and stores them in self.CalibCurves.
         This is a dictionary, with entries either like {SRname: CL_graph}.
@@ -407,8 +441,12 @@ class Combiner:
         SRcorr_denominator.SetDirectory(0)
 
         # Output text file for the STAs
-        outfile = open('/'.join([outdirname,'STAresults.csv']), 'w')
+        stafile = open('/'.join([outdirname,'STAresults.csv']), 'w')
         badmodelfile = open('/'.join([outdirname,'DoNotProcess.txt']), 'w')
+        # Output text file for HepData
+        hepdatafile = open('/'.join([outdirname,'HepData.csv']), 'w')
+
+        # More detailed info for each SR
         perSRfiles = {} # For each SR, the excluded models where that SR is the best
         def addPerSRresult(key, value):
             try:
@@ -431,6 +469,7 @@ class Combiner:
                 perSRCLsfiles[key].write(line)
             pass
 
+        # Prepare for the loop over models
         if eventlist:
             print '%i models found in event list'%(eventlist.GetN())
         else:
@@ -462,11 +501,18 @@ class Combiner:
 
             # This could definitely be done in a more clever way, but let's just get it done
             nonBestSRs = []
+            allSRs = [] # Initially a list of [SRname, CLsExp], to allow sorting by best expected
             for k,v in CLresults.items():
+                if v.value < 0.05:
+                    allSRs.append([CLresultsExp[k].value, self.__HepDataSRname(k)])
                 if v.value < 0.05 and k != bestSR:
                     nonBestSRs.append(k)
-            outfile.write('%i,%6e,%s,%s\n'%(modelName,CLresult.value,bestSR,','.join(nonBestSRs)))
+            stafile.write('%i,%6e,%s,%s\n'%(modelName,CLresult.value,bestSR,','.join(nonBestSRs)))
             SRcount['STA'] += 1
+
+            # Construct a string listing the excluding SRs, ordered by CLsExp
+            hepdatastring = ';'.join([thing[1] for thing in sorted(allSRs)])
+            hepdatafile.write('%i,%s\n'%(modelName,hepdatastring))
 
             ObsCLsPlots.fill(CLresult)
             if bestSR:
@@ -539,8 +585,9 @@ class Combiner:
                         # Order does not matter, as every combo comes up eventually
                         SRcorr_numerator.Fill(exclSR, exclSR2, 1)
                 
-        outfile.close()
+        stafile.close()
         badmodelfile.close()
+        hepdatafile.close()
         yieldfile.Close()
 
         SRcorr_exclusion = SRcorr_numerator.Clone('SRcorr_exclusion')
