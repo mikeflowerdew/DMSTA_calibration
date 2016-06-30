@@ -52,6 +52,9 @@ class CLs:
         else:
             return 'INVALID CLs value of %s'%valuestr
 
+    def __repr__(self):
+        return self.__str__()
+
 class DoNotProcessError(Exception):
     """Signals that there is something really wrong with the model,
     and it should not be processed by the STAs.
@@ -290,7 +293,7 @@ class Combiner:
 
             # Find the best SR
             if self.useexpected:
-                resultkey = min(resultsExp, key=results.get)
+                resultkey = min(resultsExp, key=resultsExp.get)
             else:
                 resultkey = min(results, key=results.get)
             # FIXME: Use results[resultkey] to find if CLs < 0.05
@@ -304,7 +307,7 @@ class Combiner:
             elif self.strategy == 'twosmallest':
                 # Now we need to sort the whole list
                 if self.useexpected:
-                    sortedkeys = sorted(resultsExp, key=results.get)[:2]
+                    sortedkeys = sorted(resultsExp, key=resultsExp.get)[:2]
                 else:
                     sortedkeys = sorted(results, key=results.get)[:2]
                 # Find the observed CLs from the two best results
@@ -501,18 +504,44 @@ class Combiner:
 
             # This could definitely be done in a more clever way, but let's just get it done
             nonBestSRs = []
-            allSRs = [] # Initially a list of [SRname, CLsExp], to allow sorting by best expected
+            excludedSRs_CLsExp = {} # A dict of {SRname: CLsExp}, to allow sorting by best expected CLs
+            excludedSRs_CLsObs = {} # A dict of {SRname: CLsObs}, for debugging
             for k,v in CLresults.items():
                 if v.value < 0.05:
-                    allSRs.append([CLresultsExp[k].value, self.__HepDataSRname(k)])
+                    if self.useexpected:
+                        excludedSRs_CLsExp[self.__HepDataSRname(k)] = CLresultsExp[k]
+                    excludedSRs_CLsObs[self.__HepDataSRname(k)] = CLresults[k]
                 if v.value < 0.05 and k != bestSR:
                     nonBestSRs.append(k)
             stafile.write('%i,%6e,%s,%s\n'%(modelName,CLresult.value,bestSR,','.join(nonBestSRs)))
             SRcount['STA'] += 1
 
             # Construct a string listing the excluding SRs, ordered by CLsExp
-            hepdatastring = ';'.join([thing[1] for thing in sorted(allSRs)])
+            # Sort in _exactly_ the same way as in self.__AnalyseModel.
+            if self.useexpected:
+                hepdatastring = ';'.join(sorted(excludedSRs_CLsExp, key=excludedSRs_CLsExp.get))
+            else:
+                hepdatastring = ';'.join(sorted(excludedSRs_CLsObs, key=excludedSRs_CLsObs.get))
             hepdatafile.write('%i,%s\n'%(modelName,hepdatastring))
+            try:
+                bestSR_HepData = hepdatastring.split(';')[0]
+                if bestSR and CLresult.value < 0.05:
+                    # FIXME: If both CLsExp results are equal to 1e-6, then the order is arbitrary
+                    if CLresultsExp[bestSR].value > 1e-6 or excludedSRs_CLsExp[bestSR_HepData].value > 1e-6:
+                        # Check that the two SRs have the same name
+                        assert(bestSR_HepData == self.__HepDataSRname(bestSR))
+                elif hepdatastring:
+                    # In principle an error
+                    assert(excludedSRs_CLsObs[bestSR_HepData].value < 0.05) # FIXME: Report exclusion where we use none in the paper
+            except AssertionError:
+                from pprint import pprint
+                print '================= ERROR on event',ientry,', model',modelName
+                print CLresult
+                print bestSR
+                pprint(CLresults)
+                pprint(CLresultsExp)
+                print hepdatastring
+                raise
 
             ObsCLsPlots.fill(CLresult)
             if bestSR:
@@ -563,7 +592,10 @@ class Combiner:
                 addPerSRresult(bestSR, str(int(modelName)))
             # Also record all CLs values, regardless of other considerations
             for k,v in CLresults.items():
-                addPerSRCLsresult(k, int(modelName), v.value, CLresultsExp[k].value)
+                if self.useexpected:
+                    addPerSRCLsresult(k, int(modelName), v.value, CLresultsExp[k].value)
+                else:
+                    addPerSRCLsresult(k, int(modelName), v.value, '---')
 
             exclusionSRs = []
             for k,v in CLresults.items():
@@ -692,29 +724,34 @@ class Combiner:
 
         CLsPlot_withInvalid('CLsObs')
         CLsPlot_withInvalid('LogCLsObs', True)
-        CLsPlot_withExpected('CLsObs')
-        CLsPlot_withExpected('LogCLsObs', True)
+        if self.useexpected:
+            CLsPlot_withExpected('CLsObs')
+            CLsPlot_withExpected('LogCLsObs', True)
 
         # Try some per-SR plots
         pdfname = 'PerSRCLs'
         pdfnameLog = 'PerSRLogCLs'
         canvas.Print('/'.join([dirname,pdfname+'Plot.pdf[']))
         canvas.Print('/'.join([dirname,pdfnameLog+'Plot.pdf[']))
-        canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf[']))
-        canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf[']))
+        if self.useexpected:
+            canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf[']))
+            canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf[']))
         for key in sorted(infile.GetListOfKeys()):
             keyname = key.GetName()
             if keyname.endswith('_valid'): continue
             if keyname.startswith('CLsObs'):
                 CLsPlot_withInvalid(keyname, pdfname=pdfname)
-                CLsPlot_withExpected(keyname, pdfname=pdfname)
+                if self.useexpected:
+                    CLsPlot_withExpected(keyname, pdfname=pdfname)
             elif keyname.startswith('LogCLsObs'):
                 CLsPlot_withInvalid(keyname, True, pdfname=pdfnameLog)
-                CLsPlot_withExpected(keyname, True, pdfname=pdfnameLog)
+                if self.useexpected:
+                    CLsPlot_withExpected(keyname, True, pdfname=pdfnameLog)
         canvas.Print('/'.join([dirname,pdfname+'Plot.pdf]']))
         canvas.Print('/'.join([dirname,pdfnameLog+'Plot.pdf]']))
-        canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf]']))
-        canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf]']))
+        if self.useexpected:
+            canvas.Print('/'.join([dirname,pdfname+'ExpPlot.pdf]']))
+            canvas.Print('/'.join([dirname,pdfnameLog+'ExpPlot.pdf]']))
 
         NSRname = '/'.join([dirname,'NSRplot.pdf'])
         NSRplot = infile.Get('NSRplot')
