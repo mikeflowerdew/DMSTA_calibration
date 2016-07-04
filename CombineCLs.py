@@ -507,41 +507,108 @@ class Combiner:
             excludedSRs_CLsExp = {} # A dict of {SRname: CLsExp}, to allow sorting by best expected CLs
             excludedSRs_CLsObs = {} # A dict of {SRname: CLsObs}, for debugging
             for k,v in CLresults.items():
-                if v.value < 0.05:
-                    if self.useexpected:
-                        excludedSRs_CLsExp[self.__HepDataSRname(k)] = CLresultsExp[k]
-                    excludedSRs_CLsObs[self.__HepDataSRname(k)] = CLresults[k]
+                # if v.value < 0.05:
+                if self.useexpected:
+                    excludedSRs_CLsExp[self.__HepDataSRname(k)] = CLresultsExp[k]
+                excludedSRs_CLsObs[self.__HepDataSRname(k)] = CLresults[k]
                 if v.value < 0.05 and k != bestSR:
                     nonBestSRs.append(k)
             stafile.write('%i,%6e,%s,%s\n'%(modelName,CLresult.value,bestSR,','.join(nonBestSRs)))
             SRcount['STA'] += 1
 
-            # Construct a string listing the excluding SRs, ordered by CLsExp
-            # Sort in _exactly_ the same way as in self.__AnalyseModel.
+            # Sort the SRs, the same way as in self.__AnalyseModel
             if self.useexpected:
-                hepdatastring = ';'.join(sorted(excludedSRs_CLsExp, key=excludedSRs_CLsExp.get))
+                sortedSRs = sorted(excludedSRs_CLsExp, key=excludedSRs_CLsExp.get)
             else:
-                hepdatastring = ';'.join(sorted(excludedSRs_CLsObs, key=excludedSRs_CLsObs.get))
-            hepdatafile.write('%i,%s\n'%(modelName,hepdatastring))
+                sortedSRs = sorted(excludedSRs_CLsObs, key=excludedSRs_CLsObs.get)
+            # Construct two lists of SRs. First the best SR(s)
+            bestSRlist = []
+            # Only fill this if it makes any sense at all
+            if CLresult.value < 0.99:
+                for SRname in sortedSRs:
+
+                    # If the CL is too high, break out
+                    # Add a sanity check that the CL is also not too low
+                    if self.useexpected:
+                        if excludedSRs_CLsExp[SRname].value - CLresultsExp[bestSR].value > 1e-2*CLresultsExp[bestSR].value:
+                            break
+                        elif excludedSRs_CLsExp[SRname].value - CLresultsExp[bestSR].value < -1e-2*CLresultsExp[bestSR].value:
+                            print '================================== ERROR ERROR ERROR RESULTS DO NOT AGREE'
+                    else:
+                        if excludedSRs_CLsObs[SRname].value - CLresults[bestSR].value > 1e-2*CLresults[bestSR].value:
+                            break
+                        elif excludedSRs_CLsObs[SRname].value - CLresults[bestSR].value < -1e-2*CLresults[bestSR].value:
+                            print '================================== ERROR ERROR ERROR RESULTS DO NOT AGREE'
+                    # If we get to here, it's a "best" SR
+                    bestSRlist.append(SRname)
+
             try:
-                bestSR_HepData = hepdatastring.split(';')[0]
-                if bestSR and CLresult.value < 0.05:
-                    # FIXME: If both CLsExp results are equal to 1e-6, then the order is arbitrary
-                    if CLresultsExp[bestSR].value > 1e-6 or excludedSRs_CLsExp[bestSR_HepData].value > 1e-6:
-                        # Check that the two SRs have the same name
-                        assert(bestSR_HepData == self.__HepDataSRname(bestSR))
-                elif hepdatastring:
-                    # In principle an error
-                    assert(excludedSRs_CLsObs[bestSR_HepData].value < 0.05) # FIXME: Report exclusion where we use none in the paper
+                if bestSRlist:
+                    assert(self.__HepDataSRname(bestSR) in bestSRlist)
             except AssertionError:
+                print '=============== best SR not in the list?'
                 from pprint import pprint
-                print '================= ERROR on event',ientry,', model',modelName
-                print CLresult
+                pprint(excludedSRs_CLsExp)
                 print bestSR
-                pprint(CLresults)
-                pprint(CLresultsExp)
-                print hepdatastring
                 raise
+
+            bestSRstring = ';'.join(bestSRlist)
+            # Now make a string of the excluding SRs, in order of best observed CLs
+            sortedSRs = sorted(excludedSRs_CLsObs, key=excludedSRs_CLsObs.get)
+            excludingSRlist = []
+            for SRname in sortedSRs:
+
+                if excludedSRs_CLsObs[SRname] >= 0.05:
+                    break
+                excludingSRlist.append(SRname)
+
+            excludingSRstring = ';'.join(excludingSRlist)
+
+            if len(bestSRlist) > 1 and CLresult.value < 0.05:
+                # Should generally mean we have no problems excluding
+                try:
+                    for SRname in bestSRlist:
+                        assert(SRname in excludingSRlist)
+                except AssertionError:
+                    print '====================== Multiple best SRs do not all exclude?? Model',modelName
+                    from pprint import pprint
+                    print CLresult
+                    print bestSR
+                    pprint(CLresults)
+                    pprint(CLresultsExp)
+                    pprint(bestSRlist)
+                    pprint(excludingSRlist)
+                    # if modelName != 245974 and modelName != 43893: raise
+
+            hepdatafile.write('%i,%s,%s\n'%(modelName,bestSRstring,excludingSRstring))
+
+                        
+#             # Construct a string listing the excluding SRs, ordered by CLsExp
+#             # Sort in _exactly_ the same way as in self.__AnalyseModel.
+#             if self.useexpected:
+#                 hepdatastring = ';'.join(sorted(excludedSRs_CLsExp, key=excludedSRs_CLsExp.get))
+#             else:
+#                 hepdatastring = ';'.join(sorted(excludedSRs_CLsObs, key=excludedSRs_CLsObs.get))
+#             hepdatafile.write('%i,%s\n'%(modelName,hepdatastring))
+#             try:
+#                 bestSR_HepData = hepdatastring.split(';')[0]
+#                 if bestSR and CLresult.value < 0.05:
+#                     # FIXME: If both CLsExp results are equal to 1e-6, then the order is arbitrary
+#                     if CLresultsExp[bestSR].value > 1e-6 or excludedSRs_CLsExp[bestSR_HepData].value > 1e-6:
+#                         # Check that the two SRs have the same name
+#                         assert(bestSR_HepData == self.__HepDataSRname(bestSR))
+#                 elif hepdatastring:
+#                     # In principle an error
+#                     assert(excludedSRs_CLsObs[bestSR_HepData].value < 0.05) # FIXME: Report exclusion where we use none in the paper
+#             except AssertionError:
+#                 from pprint import pprint
+#                 print '================= ERROR on event',ientry,', model',modelName
+#                 print CLresult
+#                 print bestSR
+#                 pprint(CLresults)
+#                 pprint(CLresultsExp)
+#                 print hepdatastring
+#                 raise
 
             ObsCLsPlots.fill(CLresult)
             if bestSR:
